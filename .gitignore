@@ -1,3 +1,9 @@
+# directories to ignore
 model/
 cmake-build-debug/
 .idea/
+bin/
+
+# files to ignore
+**/*.o
+**/.DS_Store

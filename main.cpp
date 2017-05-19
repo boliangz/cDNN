@@ -1,9 +1,6 @@
 #include <iostream>
 #include "Eigen"
-#include "lstm.h"
-#include "mlp.h"
-#include "dropout.h"
-#include "loss.h"
+#include "nn.h"
 #include "bi_lstm_with_char.h"
 
 
@@ -84,14 +81,11 @@ int main() {
 //
 //    crossEntropyGradientCheck(crossEntropyCache, crossEntropyDiff);
 
-    std::vector<Sequence> trainingData;
-
-
-
     //
     // random initialize training data
     //
-    int numSequence = 20;
+    std::vector<Sequence> trainingData;
+    int numSequence = 10000;
     int tokenLen = 5;
     int sequenceLen = 10;
     int wordDim = 50;
