@@ -2,7 +2,7 @@
 #include "Eigen"
 #include "nn.h"
 #include "bi_lstm_with_char.h"
-
+#include "loader.h"
 
 int main() {
 //    Eigen::MatrixXd x(4, 3);

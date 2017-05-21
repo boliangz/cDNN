@@ -12,6 +12,16 @@
 #include <regex>
 
 
+struct Sequence {
+    std::vector<int> wordIndex;
+    Eigen::MatrixXd wordEmb;
+    std::vector<std::vector<int>> charIndex;
+    std::vector<Eigen::MatrixXd> charEmb;
+    std::vector<int> labelIndex;
+    Eigen::MatrixXd labelOneHot;
+    int seqLen;
+};
+
 typedef std::vector<std::map<std::string, std::vector<std::string>>> DATA;
 
 template<typename M>
@@ -23,12 +33,12 @@ void loadPreEmbedding(std::string filePath, std::map<std::string, Eigen::MatrixX
 void loadRawData(std::string filePath, DATA & rawData);
 
 template <typename T>
-void set2Map(const std::set<T> & s, std::map<int, std::string> & id2T, std::map<std::string, int> & t2Id);
+void set2map(const std::set<T> & s, std::map<int, std::string> & id2t, std::map<std::string, int> & t2id);
 
 void generateTokenSet(const DATA & rawData, std::set<std::string> & words, std::set<std::string> & labels,
                       std::set<char> & chars);
 
-void embeddingLookUp(Eigen::MatrixXd & wordEmbedding, std::map<std::string, Eigen::MatrixXd> & preEmbedding,
+void parsePreEmbedding(Eigen::MatrixXd & wordEmbedding, std::map<std::string, Eigen::MatrixXd> & preEmbedding,
                      std::map<int, std::string> id2word);
 
 //template <class T>

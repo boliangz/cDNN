@@ -5,6 +5,7 @@
 #include <numeric>
 #include "nn.h"
 #include "bi_lstm_with_char.h"
+#include "loader.h"
 
 //
 // network configuration
@@ -358,6 +359,4 @@ void biLSTMCharRun(const std::vector<Sequence>& training,
         float average = std::accumulate( epoch_loss.begin(), epoch_loss.end(), 0.0)/epoch_loss.size();
         std::cout << "epoch loss: " << average << std::endl;
     }
-
-
 }

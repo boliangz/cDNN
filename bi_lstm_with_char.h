@@ -5,13 +5,6 @@
 #ifndef PARSER_BI_LSTM_WITH_CHAR_H
 #define PARSER_BI_LSTM_WITH_CHAR_H
 
-struct Sequence {
-    Eigen::MatrixXd wordEmb;
-    Eigen::MatrixXd wordIndex;
-    std::vector<Eigen::MatrixXd> charEmb;
-    Eigen::MatrixXd label;
-};
-
 //
 // run network
 //
