@@ -5,10 +5,13 @@
 #ifndef PARSER_BI_LSTM_WITH_CHAR_H
 #define PARSER_BI_LSTM_WITH_CHAR_H
 
+#include "loader.h"
+
 //
 // run network
 //
-void biLSTMCharRun(const std::vector<Sequence>& training, const std::vector<Sequence>& eval, int epoch);
+void biLSTMCharRun(const std::vector<Sequence> & training, const std::vector<Sequence> & eval,
+                   Eigen::MatrixXd & wordEmbedding, const Eigen::MatrixXd & charEmbedding);
 
 void networkForward(const Sequence & s, Eigen::MatrixXd & loss);
 

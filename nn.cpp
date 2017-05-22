@@ -7,6 +7,7 @@
 #include <iostream>
 #include "nn.h"
 #include "utils.h"
+#include "loader.h"
 
 //
 // MLP implementation
@@ -486,6 +487,16 @@ void lstmParamUpdate(const double learningRate,
     lstmParameters.bc -= learningRate * lstmDiff.bc_diff;
     gradientClip(lstmDiff.bo_diff);
     lstmParameters.bo -= learningRate * lstmDiff.bo_diff;
+}
+
+void lstmInputUpdate(double learningRate,
+                     const Sequence & s,
+                     Eigen::MatrixXd wordEmbedding,
+                     LSTMDiff & lstmDiff) {
+    gradientClip(lstmDiff.x_diff);
+    for (int i = 0; i < s.seqLen; ++i) {
+        wordEmbedding.col(s.wordIndex[i]) -= learningRate * lstmDiff.x_diff.col(i);
+    }
 }
 
 //

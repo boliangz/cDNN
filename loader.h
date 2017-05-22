@@ -12,56 +12,42 @@
 #include <regex>
 
 
+typedef std::vector<std::map<std::string, std::vector<std::string> > > RAWDATA;
+
 struct Sequence {
     std::vector<int> wordIndex;
     Eigen::MatrixXd wordEmb;
-    std::vector<std::vector<int>> charIndex;
+    std::vector<std::vector<int> > charIndex;
     std::vector<Eigen::MatrixXd> charEmb;
     std::vector<int> labelIndex;
     Eigen::MatrixXd labelOneHot;
     int seqLen;
 };
 
-typedef std::vector<std::map<std::string, std::vector<std::string>>> DATA;
 
-template<typename M>
-void loadEmbedding(std::string filePath, M & embedding);
+void loadPreEmbedding(std::string & filePath, std::map<std::string, Eigen::MatrixXd> & preEmbedding);
 
+void loadRawData(std::string & filePath, RAWDATA & rawData);
 
-void loadPreEmbedding(std::string filePath, std::map<std::string, Eigen::MatrixXd> & preEmbedding);
+void set2map(const std::set<std::string> & s, std::map<int, std::string> & id2t, std::map<std::string, int> & t2id);
 
-void loadRawData(std::string filePath, DATA & rawData);
+void createTokenSet(const RAWDATA & rawData,
+                    std::set<std::string> & words,
+                    std::set<std::string> & labels,
+                    std::set<std::string> & chars);
 
-template <typename T>
-void set2map(const std::set<T> & s, std::map<int, std::string> & id2t, std::map<std::string, int> & t2id);
+void preEmbLookUp(Eigen::MatrixXd & wordEmbedding,
+                  const std::map<std::string, Eigen::MatrixXd> & preEmbedding,
+                  const std::map<int, std::string> & id2word);
 
-void generateTokenSet(const DATA & rawData, std::set<std::string> & words, std::set<std::string> & labels,
-                      std::set<char> & chars);
+void createData(const RAWDATA & rawData,
+                const std::map<std::string, int> & word2id,
+                const std::map<std::string, int> & char2id,
+                const std::map<std::string, int> & label2id,
+                std::vector<Sequence> & data);
 
-void parsePreEmbedding(Eigen::MatrixXd & wordEmbedding, std::map<std::string, Eigen::MatrixXd> & preEmbedding,
-                     std::map<int, std::string> id2word);
-
-//template <class T>
-//void generateMapping(std::set<std::string> & s,
-//                     std::map<int, T> id2T,
-//                     std::map<T, int> T2id,
-//                     ) {
-//
-//    std::map<int, std::string> id2word;
-//    std::map<int, std::string> id2char;
-//    std::map<int, std::string> id2label;
-//    std::map<std::string, int> word2id;
-//    std::map<std::string, int> char2id;
-//    std::map<std::string, int> label2id;
-//
-//    set2Map<std::string>(words, id2word, word2id);
-//    set2Map<std::string>(labels, id2label, label2id);
-//    set2Map<char>(chars, id2char, char2id);
-//
-//}
-
-
-void preprocessData(DATA & rawData, DATA & );
-
+void processData(Sequence & s,
+                 const Eigen::MatrixXd & wordEmbedding,
+                 const Eigen::MatrixXd & charEmbedding);
 
 #endif //PARSER_LOADER_H

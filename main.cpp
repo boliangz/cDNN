@@ -1,113 +1,64 @@
 #include <iostream>
 #include "Eigen"
-#include "nn.h"
+#include "utils.h"
 #include "bi_lstm_with_char.h"
 #include "loader.h"
 
+
 int main() {
-//    Eigen::MatrixXd x(4, 3);
-//    x << 1.0, 2.0, 3.0,
-//         4.0, 5.0, 6.0,
-//         7.0, 8.0, 9.0,
-//         1.0, 2.0, 3.0;
+//    if (argc < 3) {
+//        std::cerr << "Usage: " << argv[0] << " TRAIN_BIO EVAL_BIO MODEL_DIR" << std::endl;
+//        return 1;
+//    }
 
-//    Eigen::MatrixXd x = Eigen::MatrixXd::Random(4, 3);
-
-//    int inputSize = 4;
-
-    //
-    // LSTM test
-    //
-//    int lstmHiddenDim = 10;
-//
-//    LSTMParameters lstmParameters;
-//    LSTMCache lstmCache;
-//    LSTMDiff lstmDiff;
-//
-//    lstmInit(inputSize, lstmHiddenDim, lstmParameters);
-//
-//    lstmForward(x, lstmParameters, lstmCache);
-//
-//    Eigen::MatrixXd dy = Eigen::MatrixXd::Random(lstmHiddenDim, x.cols());
-//    lstmBackward(dy, lstmParameters, lstmCache, lstmDiff);
-//
-//    lstmGradientCheck(dy, lstmParameters, lstmCache, lstmDiff);
-
-    //
-    // MLP test
-    //
-//    int mlpHiddenDim = 10;
-//
-//    MLPParameters mlpParameters;
-//    MLPCache mlpCache;
-//    MLPDiff mlpDiff;
-//
-//    mlpInit(inputSize, mlpHiddenDim, mlpParameters);
-//
-//    mlpForward(x, mlpParameters, mlpCache);
-//
-//    Eigen::MatrixXd dy = Eigen::MatrixXd::Random(mlpHiddenDim, x.cols());
-//    mlpBackward(dy, mlpParameters, mlpCache, mlpDiff);
-//
-//    mlpGradientCheck(dy, mlpParameters, mlpCache, mlpDiff);
-
-
-    //
-    // Dropout test
-    //
-//    DropoutCache dropoutCache;
-//    DropoutDiff dropoutDiff;
-//    double p = 0.5;
-//
-//    dropoutForward(x, p, dropoutCache);
-//
-//    Eigen::MatrixXd dy = Eigen::MatrixXd::Random(x.rows(), x.cols());
-//    dropoutBackward(dy, dropoutCache, dropoutDiff);
-//
-//    dropoutGradientCheck(dy, dropoutCache, dropoutDiff);
-
-    //
-    // cross entropy loss test
-    //
-//    CrossEntropyCache crossEntropyCache;
-//    CrossEntropyDiff crossEntropyDiff;
-//
-//    Eigen::MatrixXd ref(mlpCache.y.rows(), mlpCache.y.cols());
-//    ref.setRandom();
-//
-//    crossEntropyForward(mlpCache.y, ref, crossEntropyCache);
-//
-//    crossEntropyBackward(crossEntropyCache, crossEntropyDiff);
-//
-//    crossEntropyGradientCheck(crossEntropyCache, crossEntropyDiff);
-
-    //
-    // random initialize training data
-    //
-    std::vector<Sequence> trainingData;
-    int numSequence = 10000;
-    int tokenLen = 5;
-    int sequenceLen = 10;
     int wordDim = 50;
     int charDim = 25;
-    int labelSize = 3;
-    for (int i = 0; i < numSequence; i++) {
-        Sequence s;
-        s.wordEmb = Eigen::MatrixXd::Random(wordDim, sequenceLen);
-        for (int j = 0; j < sequenceLen; j++) {
-            Eigen::MatrixXd charEmb = Eigen::MatrixXd::Random(charDim, tokenLen);
-            s.charEmb.push_back(charEmb);
-        }
-        s.label = Eigen::MatrixXd::Constant(labelSize, sequenceLen, 1);
+    int wordLSTMHiddenDim = 100;
+    int charLSTMHiddenDim = 25;
+    double learningRate = 0.01;
+    double dropoutRate = 0.5;
 
-        trainingData.push_back(s);
-    }
+//    std::string trainFile = argv[1];
+//    std::string evalFile = argv[2];
+//    std::string modelDir = argv[3];
+    std::string trainFile = "/Users/boliangzhang/Documents/Phd/cDNN/data/updated_UD_English/en-ud-dev.bio";
+    std::string evalFile = "/Users/boliangzhang/Documents/Phd/cDNN/data/updated_UD_English/en-ud-dev.bio";
+    std::string modelDir = "/Users/boliangzhang/Documents/Phd/cDNN/model/";
 
-    //
-    // train network
-    //
-    int epoch = 10;
-    biLSTMCharRun(trainingData, trainingData, epoch);
+    RAWDATA trainRawData;
+    RAWDATA evalRawData;
+    loadRawData(trainFile, trainRawData);
+    loadRawData(evalFile, evalRawData);
+
+    std::set<std::string> trainWords, trainLabels, trainChars, evalWords, evalLabels, evalChars;
+    createTokenSet(trainRawData, trainWords, trainLabels, trainChars);
+    createTokenSet(evalRawData, evalWords, evalLabels, evalChars);
+
+    std::map<int, std::string> id2word, id2char, id2label;
+    std::map<std::string, int> word2id, char2id, label2id;
+    trainWords.insert(evalWords.begin(), evalWords.end());
+    set2map(trainWords, id2word, word2id);
+    trainChars.insert(evalChars.begin(), evalChars.end());
+    set2map(trainChars, id2char, char2id);
+    trainLabels.insert(evalLabels.begin(), evalLabels.end());
+    set2map(trainLabels, id2label, label2id);
+
+    std::vector<Sequence> trainData;
+    std::vector<Sequence> evalData;
+    createData(trainRawData, word2id, char2id, label2id, trainData);
+    createData(evalRawData, word2id, char2id, label2id, evalData);
+
+    std::string preEmbeddingFile = "/Users/boliangzhang/Documents/Phd/LORELEI/data/name_taggers/dnn/embeddings/eng_senna.emb";
+    std::map<std::string, Eigen::MatrixXd> preEmbedding;
+    std::printf("loading pre-trained embedding from: %s \n", preEmbeddingFile.c_str());
+    loadPreEmbedding(preEmbeddingFile, preEmbedding);
+
+    Eigen::MatrixXd wordEmbedding = initializeVariable(wordDim, word2id.size());
+    preEmbLookUp(wordEmbedding, preEmbedding, id2word);
+
+    Eigen::MatrixXd charEmbedding = initializeVariable(charDim, char2id.size());
+
+    biLSTMCharRun(trainData, evalData, wordEmbedding, charEmbedding);
 
     return 0;
 }

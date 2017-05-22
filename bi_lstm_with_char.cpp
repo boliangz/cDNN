@@ -69,7 +69,7 @@ void networkForward(const Sequence & s,
     mlpForward(mlpInput, mlpParameters, mlpCache);
 
     // cross entropy forward
-    crossEntropyForward(mlpCache.y, s.label, crossEntropyCache);
+    crossEntropyForward(mlpCache.y, s.labelOneHot, crossEntropyCache);
 
     loss = crossEntropyCache.loss;
 }
@@ -129,10 +129,13 @@ void networkBackward(const Sequence & s){
     // update input
 }
 
-void networkParamUpdate(){
+void networkParamUpdate(Sequence & s,
+                        Eigen::MatrixXd & wordEmbedding) {
     mlpParamUpdate(learningRate, mlpParameters, mlpDiff);
     lstmParamUpdate(learningRate, wordFWDLSTMParam, wordFWDLSTMDiff);
+    lstmInputUpdate(learningRate, s, wordEmbedding, wordFWDLSTMDiff);
     lstmParamUpdate(learningRate, wordBWDLSTMParam, wordBWDLSTMDiff);
+    lstmInputUpdate(learningRate, s, wordEmbedding, wordBWDLSTMDiff);
     lstmParamUpdate(learningRate, charFWDLSTMParam, charFWDLSTMDiff);
     lstmParamUpdate(learningRate, charBWDLSTMParam, charBWDLSTMDiff);
 }
@@ -309,8 +312,8 @@ void networkGradientCheck(const Sequence & s){
 
 void biLSTMCharRun(const std::vector<Sequence>& training,
                    const std::vector<Sequence>& eval,
-                   int epoch
-) {
+                   Eigen::MatrixXd & wordEmbedding,
+                   const Eigen::MatrixXd & charEmbedding) {
     //
     // initialize parameters
     //
@@ -318,16 +321,22 @@ void biLSTMCharRun(const std::vector<Sequence>& training,
     lstmInit(charDim, charLSTMHiddenDim, charBWDLSTMParam);
     lstmInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordFWDLSTMParam);
     lstmInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordBWDLSTMParam);
-    int labelSize = training[0].label.rows();
+    int labelSize = training[0].labelOneHot.rows();
     mlpInit(2 * wordLSTMHiddenDim, labelSize, mlpParameters);
 
+    int epoch = 100;
     for (int i = 0; i < epoch; i++) {
         std::cout << "=> " << i << " epoch training starts..." << std::endl;
 
         int numSeqToReport = 200;
         std::vector<float> epoch_loss;
+        std::vector<int> index(training.size());
+        std::iota(index.begin(), index.end(), 1);
+        std::random_shuffle(index.begin(), index.end());
         for (int j = 0; j < training.size(); ++j){
-            Sequence s = training[j];
+            Sequence s = training[index[j]-1];
+
+            processData(s, wordEmbedding, charEmbedding);
             //
             // network forward
             //
@@ -348,7 +357,7 @@ void biLSTMCharRun(const std::vector<Sequence>& training,
             //
             // network parameters update
             //
-            networkParamUpdate();
+            networkParamUpdate(s, wordEmbedding);
 
             if ((j + 1) % numSeqToReport == 0){
                 std::vector<float> v(epoch_loss.end() - numSeqToReport, epoch_loss.end());

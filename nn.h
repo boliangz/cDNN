@@ -6,6 +6,7 @@
 #define CDNN_NN_H
 
 #include <Eigen>
+#include "loader.h"
 
 //
 // MLP implementation
@@ -117,6 +118,11 @@ void lstmGradientCheck(const Eigen::MatrixXd & dy, const LSTMParameters & lstmPa
 
 void lstmParamUpdate(const double learningRate, LSTMParameters & lstmParameters, LSTMDiff & lstmDiff);
 
+
+void lstmInputUpdate(double learningRate,
+                     const Sequence & s,
+                     Eigen::MatrixXd wordEmbedding,
+                     LSTMDiff & lstmDiff);
 //
 // Dropout implementation
 //
