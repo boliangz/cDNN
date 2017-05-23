@@ -27,8 +27,27 @@ int main() {
     Eigen::MatrixXd dy = Eigen::MatrixXd::Random(lstmHiddenDim, x.cols());
     lstmBackward(dy, lstmParameters, lstmCache, lstmDiff);
 
-    std::cout << "lstm gradient check." << std::endl;
+    std::cout << "########## lstm gradient check. #############" << std::endl;
     lstmGradientCheck(dy, lstmParameters, lstmCache, lstmDiff);
+
+    //
+    // Bi-LSTM test
+    //
+    int biLSTMHiddenDim = 10;
+
+    BiLSTMParameters biLSTMParameters;
+    BiLSTMCache biLSTMCache;
+    BiLSTMDiff biLSTMDiff;
+
+    biLSTMInit(inputSize, biLSTMHiddenDim, biLSTMParameters);
+
+    biLSTMForward(x, biLSTMParameters, biLSTMCache);
+
+    dy = Eigen::MatrixXd::Random(biLSTMHiddenDim * 2, x.cols());
+    biLSTMBackward(dy, biLSTMParameters, biLSTMCache, biLSTMDiff);
+
+    std::cout << "########## bi-lstm gradient check. #############" << std::endl;
+    biLSTMGradientCheck(dy, biLSTMParameters, biLSTMCache, biLSTMDiff);
 
     //
     // MLP test
@@ -46,7 +65,7 @@ int main() {
     dy = Eigen::MatrixXd::Random(mlpHiddenDim, x.cols());
     mlpBackward(dy, mlpParameters, mlpCache, mlpDiff);
 
-    std::cout << "mlp gradient check." << std::endl;
+    std::cout << "########## mlp gradient check. #############" << std::endl;
     mlpGradientCheck(dy, mlpParameters, mlpCache, mlpDiff);
 
 
@@ -62,7 +81,7 @@ int main() {
     dy = Eigen::MatrixXd::Random(x.rows(), x.cols());
     dropoutBackward(dy, dropoutCache, dropoutDiff);
 
-    std::cout << "dropout gradient check." << std::endl;
+    std::cout << "########## dropout gradient check. #############" << std::endl;
     dropoutGradientCheck(dy, dropoutCache, dropoutDiff);
 
     //
@@ -78,7 +97,7 @@ int main() {
 
     crossEntropyBackward(crossEntropyCache, crossEntropyDiff);
 
-    std::cout << "cross entropy gradient check." << std::endl;
+    std::cout << "########## cross entropy gradient check. #############" << std::endl;
     crossEntropyGradientCheck(crossEntropyCache, crossEntropyDiff);
 
     return 0;

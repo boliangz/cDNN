@@ -490,7 +490,7 @@ void lstmParamUpdate(const double learningRate,
 // Bi-LSTM implementation
 //
 
-void BiLSTMInit(const int inputSize,
+void biLSTMInit(const int inputSize,
                 const int hiddenDimension,
                 BiLSTMParameters & biLSTMParameters){
     LSTMParameters fwdLSTMParameters;
@@ -502,7 +502,7 @@ void BiLSTMInit(const int inputSize,
 }
 
 
-void BiLSTMForward(const Eigen::MatrixXd x,
+void biLSTMForward(const Eigen::MatrixXd x,
                    const BiLSTMParameters & biLSTMParameters,
                    BiLSTMCache & biLSTMCache){
     // bi-directional word lstm forward
@@ -517,11 +517,12 @@ void BiLSTMForward(const Eigen::MatrixXd x,
             biLSTMCache.bwdLSTMCache
     );
 
+    biLSTMCache.h = Eigen::MatrixXd(biLSTMCache.fwdLSTMCache.h.rows() * 2, biLSTMCache.fwdLSTMCache.h.cols());
     biLSTMCache.h << biLSTMCache.fwdLSTMCache.h, biLSTMCache.bwdLSTMCache.h.colwise().reverse();
 }
 
 
-void BiLSTMBackward(const Eigen::MatrixXd & dy,
+void biLSTMBackward(const Eigen::MatrixXd & dy,
                     const BiLSTMParameters & biLSTMParameters,
                     const BiLSTMCache & biLSTMCache,
                     BiLSTMDiff & biLSTMDiff){
@@ -568,13 +569,13 @@ void paramGradCheck(const Eigen::MatrixXd & dy,
 
         paramToCheck(randRow, randCol) = originalVal - delta;
 
-        BiLSTMForward(x, biLSTMParameters, gradCheckCache0);
+        biLSTMForward(x, biLSTMParameters, gradCheckCache0);
 
         BiLSTMCache gradCheckCache1;
 
         paramToCheck(randRow, randCol) = originalVal + delta;
 
-        BiLSTMForward(x, biLSTMParameters, gradCheckCache1);
+        biLSTMForward(x, biLSTMParameters, gradCheckCache1);
 
         paramToCheck(randRow, randCol) = originalVal;
 
@@ -589,8 +590,10 @@ void paramGradCheck(const Eigen::MatrixXd & dy,
 }
 
 
-void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
-                    const BiLSTMParameters & biLSTMParameters, const BiLSTMCache & biLSTMCache){
+void inputGradCheck(const Eigen::MatrixXd & dy,
+                    const Eigen::MatrixXd & inputGrad,
+                    const BiLSTMParameters & biLSTMParameters,
+                    const BiLSTMCache & biLSTMCache){
     Eigen::MatrixXd x = biLSTMCache.fwdLSTMCache.x;
     std::cout.precision(15);
 
@@ -607,13 +610,13 @@ void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
 
         x(randRow, randCol) = originalVal - delta;
 
-        BiLSTMForward(x, biLSTMParameters, gradCheckCache0);
+        biLSTMForward(x, biLSTMParameters, gradCheckCache0);
 
         BiLSTMCache gradCheckCache1;
 
         x(randRow, randCol) = originalVal + delta;
 
-        BiLSTMForward(x, biLSTMParameters, gradCheckCache1);
+        biLSTMForward(x, biLSTMParameters, gradCheckCache1);
 
         x(randRow, randCol) = originalVal;
 
@@ -628,7 +631,7 @@ void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
 }
 
 
-void BiLSTMGradientCheck(const Eigen::MatrixXd & dy,
+void biLSTMGradientCheck(const Eigen::MatrixXd & dy,
                          BiLSTMParameters & biLSTMParameters,
                          const BiLSTMCache & biLSTMCache,
                          const BiLSTMDiff & biLSTMDiff) {
@@ -673,7 +676,7 @@ void BiLSTMGradientCheck(const Eigen::MatrixXd & dy,
     inputGradCheck(dy, biLSTMDiff.x_diff, biLSTMParameters, biLSTMCache);
 }
 
-void BiLSTMParamUpdate(const double learningRate, BiLSTMParameters & biLSTMParameters, BiLSTMDiff & biLSTMDiff) {
+void biLSTMParamUpdate(const double learningRate, BiLSTMParameters & biLSTMParameters, BiLSTMDiff & biLSTMDiff) {
     lstmParamUpdate(learningRate, biLSTMParameters.fwdLSTMParameters, biLSTMDiff.fwdLSTMDiff);
     lstmParamUpdate(learningRate, biLSTMParameters.bwdLSTMParameters, biLSTMDiff.bwdLSTMDiff);
 }

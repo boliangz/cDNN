@@ -138,13 +138,13 @@ struct BiLSTMDiff {
     Eigen::MatrixXd x_diff;
 };
 
-void BiLSTMInit(const int inputSize, const int hiddenDimension, BiLSTMParameters & biLSTMParameters);
+void biLSTMInit(const int inputSize, const int hiddenDimension, BiLSTMParameters & biLSTMParameters);
 
 
-void BiLSTMForward(const Eigen::MatrixXd x, const BiLSTMParameters & biLSTMParameters, BiLSTMCache & BiLSTMCache);
+void biLSTMForward(const Eigen::MatrixXd x, const BiLSTMParameters & biLSTMParameters, BiLSTMCache & BiLSTMCache);
 
 
-void BiLSTMBackward(const Eigen::MatrixXd & dy, const BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache,
+void biLSTMBackward(const Eigen::MatrixXd & dy, const BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache,
                     BiLSTMDiff & BiLSTMDiff);
 
 
@@ -155,10 +155,10 @@ void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
                     const BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache);
 
 
-void BiLSTMGradientCheck(const Eigen::MatrixXd & dy, BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache,
+void biLSTMGradientCheck(const Eigen::MatrixXd & dy, BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache,
                          const BiLSTMDiff & BiLSTMDiff);
 
-void BiLSTMParamUpdate(const double learningRate, BiLSTMParameters & biLSTMParameters, BiLSTMDiff & BiLSTMDiff);
+void biLSTMParamUpdate(const double learningRate, BiLSTMParameters & biLSTMParameters, BiLSTMDiff & BiLSTMDiff);
 
 
 //

@@ -7,7 +7,7 @@
 
 int main(int argc, char* argv []) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " TRAIN_BIO EVAL_BIO MODEL_DIR" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " train_bio eval_bio pretrain_emb model_dir" << std::endl;
         return 1;
     }
 
@@ -20,10 +20,8 @@ int main(int argc, char* argv []) {
 
     std::string trainFile = argv[1];
     std::string evalFile = argv[2];
-    std::string modelDir = argv[3];
-//    std::string trainFile = "/Users/boliangzhang/Documents/Phd/cDNN/data/updated_UD_English/en-ud-dev.bio";
-//    std::string evalFile = "/Users/boliangzhang/Documents/Phd/cDNN/data/updated_UD_English/en-ud-dev.bio";
-//    std::string modelDir = "/Users/boliangzhang/Documents/Phd/cDNN/model/";
+    std::string preEmbeddingFile = argv[3];
+    std::string modelDir = argv[4];
 
     RAWDATA trainRawData;
     RAWDATA evalRawData;
@@ -34,7 +32,6 @@ int main(int argc, char* argv []) {
     createTokenSet(trainRawData, trainWords, trainLabels, trainChars);
     createTokenSet(evalRawData, evalWords, evalLabels, evalChars);
 
-    std::string preEmbeddingFile = "/Users/zhangb8/Documents/fb_intern/data/emb/eng_senna.emb";
     std::map<std::string, Eigen::MatrixXd> preEmbedding;
     std::printf("loading pre-trained embedding from: %s \n", preEmbeddingFile.c_str());
     loadPreEmbedding(preEmbeddingFile, preEmbedding);
