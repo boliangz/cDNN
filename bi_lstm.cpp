@@ -5,77 +5,58 @@
 #include <numeric>
 #include <ctime>
 #include "nn.h"
-#include "bi_lstm_with_char.h"
+#include "bi_lstm.h"
 #include "loader.h"
 
 //
 // network configuration
 //
 int wordDim = 50;
-int charDim = 25;
 int wordLSTMHiddenDim = 100;
-int charLSTMHiddenDim = 25;
 double learningRate = 0.01;
 double dropoutRate = 0.5;
 
 //
 // define network parameter, cache and diff
 //
-LSTMParameters charFWDLSTMParam;
-LSTMParameters charBWDLSTMParam;
-LSTMParameters wordFWDLSTMParam;
-LSTMParameters wordBWDLSTMParam;
+BiLSTMParameters biLSTMParameters;
 MLPParameters mlpParameters;
 
-LSTMCache charFWDLSTMCache;
-std::vector<LSTMCache> charFWDLSTMCacheVec;
-LSTMCache charBWDLSTMCache;
-std::vector<LSTMCache> charBWDLSTMCacheVec;
-LSTMCache wordFWDLSTMCache;
-LSTMCache wordBWDLSTMCache;
+BiLSTMCache biLSTMCache;
 MLPCache mlpCache;
 DropoutCache dropoutCache;
 CrossEntropyCache crossEntropyCache;
 
-LSTMDiff charFWDLSTMDiff;
-LSTMDiff charBWDLSTMDiff;
-LSTMDiff wordFWDLSTMDiff;
-LSTMDiff wordBWDLSTMDiff;
+BiLSTMDiff biLSTMDiff;
 MLPDiff mlpDiff;
 DropoutDiff dropoutDiff;
 CrossEntropyDiff crossEntropyDiff;
 
-
 void networkForward(const Sequence & s,
                     Eigen::MatrixXd & loss,
                     Eigen::MatrixXd & pred,
-                    bool isTrain){
-    int sequenceLen = s.charEmb.size();
-
-    // bi-directional char lstm forward
-    Eigen::MatrixXd sequcenCharEmb(2 * charLSTMHiddenDim, sequenceLen);
-    charFWDLSTMCacheVec.clear();
-    charBWDLSTMCacheVec.clear();
-    for (int j = 0; j < sequenceLen; ++j ) {
-        lstmForward(s.charEmb[j], charFWDLSTMParam, charFWDLSTMCache);
-        LSTMCache cFWD = charFWDLSTMCache;
-        charFWDLSTMCacheVec.push_back(cFWD);
-        lstmForward(s.charEmb[j].colwise().reverse(), charBWDLSTMParam, charBWDLSTMCache);
-        LSTMCache cBWD = charBWDLSTMCache;
-        charBWDLSTMCacheVec.push_back(cBWD);
-        sequcenCharEmb.col(j) << charFWDLSTMCache.h.rightCols(1), charBWDLSTMCache.h.rightCols(1);
-    }
-    // input dropout forward
-    Eigen::MatrixXd dropoutInput(wordDim + 2 * charLSTMHiddenDim, sequenceLen);
-    dropoutInput << s.wordEmb, sequcenCharEmb;  // concatenate word embedding and two character embeddings.
-    dropoutForward(dropoutInput, dropoutRate, dropoutCache);
+                    bool isTrain  // flag used to turn off dropout layer during test
+){
+    // dropout forward
+    if (isTrain)
+        dropoutForward(s.wordEmb, dropoutRate, dropoutCache);
+    else
+        dropoutForward(s.wordEmb, 0, dropoutCache);
 
     // bi-directional word lstm forward
-    lstmForward(dropoutCache.y, wordFWDLSTMParam, wordFWDLSTMCache);
-    lstmForward(dropoutCache.y.colwise().reverse(), wordBWDLSTMParam, wordBWDLSTMCache);
+    lstmForward(
+            dropoutCache.y,
+            wordFWDLSTMParam,
+            wordFWDLSTMCache
+    );
+    lstmForward(
+            dropoutCache.y.colwise().reverse(),  // backward lstm by reversing input
+            wordBWDLSTMParam,
+            wordBWDLSTMCache
+    );
 
     // mlp forward
-    Eigen::MatrixXd mlpInput(2 * wordLSTMHiddenDim, sequenceLen);
+    Eigen::MatrixXd mlpInput(2 * wordLSTMHiddenDim, s.seqLen);
     mlpInput << wordFWDLSTMCache.h, wordBWDLSTMCache.h.colwise().reverse();
     mlpForward(mlpInput, mlpParameters, mlpCache);
 
@@ -87,8 +68,6 @@ void networkForward(const Sequence & s,
 }
 
 void networkBackward(const Sequence & s){
-    int sequenceLen = s.charEmb.size();
-
     // cross entropy backward
     crossEntropyBackward(crossEntropyCache, crossEntropyDiff);
 
@@ -105,37 +84,6 @@ void networkBackward(const Sequence & s){
     // dropout backward
     Eigen::MatrixXd droputDy = wordFWDLSTMDiff.x_diff + wordBWDLSTMDiff.x_diff.colwise().reverse();
     dropoutBackward(droputDy, dropoutCache, dropoutDiff);
-
-    // char lstm backward
-    Eigen::MatrixXd charFWDLSTMdy = dropoutDiff.x_diff.block(wordDim, 0, charLSTMHiddenDim, sequenceLen);
-    Eigen::MatrixXd charBWDLSTMdy = dropoutDiff.x_diff.block(wordDim + charLSTMHiddenDim, 0, charLSTMHiddenDim, sequenceLen);
-
-    for (int i = 0; i < sequenceLen; i++) {
-        int tokenLen = s.charEmb[i].cols();
-        Eigen::MatrixXd tmpDy(charLSTMHiddenDim, tokenLen);
-        tmpDy.setZero();
-
-        tmpDy.rightCols(1) = charFWDLSTMdy.col(i);
-
-        LSTMDiff tmpCharFWDLSTMDiff;
-        lstmBackward(tmpDy, charFWDLSTMParam, charFWDLSTMCacheVec[i], tmpCharFWDLSTMDiff);
-        if (i == 0) {
-            charFWDLSTMDiff = tmpCharFWDLSTMDiff;
-        } else {
-            charFWDLSTMDiff += tmpCharFWDLSTMDiff;
-        }
-
-        tmpDy.rightCols(1) = charBWDLSTMdy.col(i);
-
-        LSTMDiff tmpCharBWDLSTMDiff;
-        lstmBackward(tmpDy, charBWDLSTMParam, charBWDLSTMCacheVec[i], tmpCharBWDLSTMDiff);
-        if (i == 0) {
-            charBWDLSTMDiff = tmpCharBWDLSTMDiff;
-        } else {
-            charBWDLSTMDiff += tmpCharBWDLSTMDiff;
-        }
-
-    }
 }
 
 void networkParamUpdate(Sequence & s,
@@ -143,8 +91,6 @@ void networkParamUpdate(Sequence & s,
     mlpParamUpdate(learningRate, mlpParameters, mlpDiff);
     lstmParamUpdate(learningRate, wordFWDLSTMParam, wordFWDLSTMDiff);
     lstmParamUpdate(learningRate, wordBWDLSTMParam, wordBWDLSTMDiff);
-    lstmParamUpdate(learningRate, charFWDLSTMParam, charFWDLSTMDiff);
-    lstmParamUpdate(learningRate, charBWDLSTMParam, charBWDLSTMDiff);
     dropoutInputUpdate(learningRate, s, wordEmbedding, dropoutDiff);
 }
 
@@ -268,42 +214,6 @@ void networkGradientCheck(const Sequence & s){
     paramGradCheck(s, wordBWDLSTMParam.bo, wordBWDLSTMDiff.bo_diff);
     std::cout << "=> gradient checking x" << std::endl;
 
-    std::cout << "####### checking charFWDLSTMDiff ########" << std::endl;
-    std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wi, charFWDLSTMDiff.Wi_diff);
-    std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wf, charFWDLSTMDiff.Wf_diff);
-    std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wc, charFWDLSTMDiff.Wc_diff);
-    std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wo, charFWDLSTMDiff.Wo_diff);
-    std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bi, charFWDLSTMDiff.bi_diff);
-    std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bf, charFWDLSTMDiff.bf_diff);
-    std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bc, charFWDLSTMDiff.bc_diff);
-    std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bo, charFWDLSTMDiff.bo_diff);
-
-    std::cout << "####### checking charBWDLSTMDiff ########" << std::endl;
-    std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wi, charBWDLSTMDiff.Wi_diff);
-    std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wf, charBWDLSTMDiff.Wf_diff);
-    std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wc, charBWDLSTMDiff.Wc_diff);
-    std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wo, charBWDLSTMDiff.Wo_diff);
-    std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bi, charBWDLSTMDiff.bi_diff);
-    std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bf, charBWDLSTMDiff.bf_diff);
-    std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bc, charBWDLSTMDiff.bc_diff);
-    std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bo, charBWDLSTMDiff.bo_diff);
-
     std::cout << "=> gradient checking wordEmb" << std::endl;
     inputGradCheck(s);
 
@@ -317,10 +227,8 @@ void train(const std::vector<Sequence>& training,
     //
     // initialize parameters
     //
-    lstmInit(charDim, charLSTMHiddenDim, charFWDLSTMParam);
-    lstmInit(charDim, charLSTMHiddenDim, charBWDLSTMParam);
-    lstmInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordFWDLSTMParam);
-    lstmInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordBWDLSTMParam);
+    lstmInit(wordDim, wordLSTMHiddenDim, wordFWDLSTMParam);
+    lstmInit(wordDim, wordLSTMHiddenDim, wordBWDLSTMParam);
     int labelSize = training[0].labelOneHot.rows();
     mlpInit(2 * wordLSTMHiddenDim, labelSize, mlpParameters);
 
@@ -333,7 +241,7 @@ void train(const std::vector<Sequence>& training,
         //
         std::cout << "=> " << i << " epoch training starts..." << std::endl;
 
-        int numSeqToReport = 1000;
+        int numSeqToReport = 100;
         std::vector<float> epoch_loss;
         std::vector<int> index(training.size());
         std::iota(index.begin(), index.end(), 1);
@@ -392,14 +300,14 @@ void train(const std::vector<Sequence>& training,
 
             std::vector<int> predLabelIndex;
             Eigen::MatrixXd maxProba = pred.colwise().maxCoeff().transpose();
-            for (int k = 0; k < s.labelIndex.size(); ++k) {
+            for (int k = 0; k < s.seqLen; ++k) {
                 for (int l = 0; l < pred.rows(); ++l) {
                     if (pred(l, k) == maxProba(k, 0))
                         predLabelIndex.push_back(l);
                 }
             }
-            numTags += s.labelIndex.size();
-            for (int k = 0; k < s.labelIndex.size(); ++k) {
+            numTags += s.seqLen;
+            for (int k = 0; k < s.seqLen; ++k) {
                 if (predLabelIndex[k] == s.labelIndex[k])
                     numCorrectTags += 1;
             }

@@ -34,14 +34,14 @@ void mlpForward(const Eigen::MatrixXd x, const MLPParameters & mlpParameters, ML
 void mlpBackward(const Eigen::MatrixXd & dy, const MLPParameters & mlpParameters, const MLPCache & mlpCache,
                  MLPDiff & mlpDiff);
 
-void paramGradCheck(const Eigen::MatrixXd & dy, const Eigen::MatrixXd & paramToCheck, const Eigen::MatrixXd & paramGrad,
+void paramGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & paramToCheck, const Eigen::MatrixXd & paramGrad,
+                    MLPParameters & mlpParameters, const MLPCache & mlpCache);
+
+
+void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
                     const MLPParameters & mlpParameters, const MLPCache & mlpCache);
 
-
-void inputGradCheck(const Eigen::MatrixXd & dy, const Eigen::MatrixXd & inputGrad,
-                    const MLPParameters & mlpParameters, const MLPCache & mlpCache);
-
-void mlpGradientCheck(const Eigen::MatrixXd & dy, const MLPParameters & mlpParameters, const MLPCache & mlpCache,
+void mlpGradientCheck(const Eigen::MatrixXd & dy, MLPParameters & mlpParameters, const MLPCache & mlpCache,
                       const MLPDiff & mlpDiff);
 
 void mlpParamUpdate(double learningRate,
@@ -106,23 +106,61 @@ void lstmBackward(const Eigen::MatrixXd & dy, const LSTMParameters & lstmParamet
                   LSTMDiff & lstmDiff);
 
 
-void paramGradCheck(const Eigen::MatrixXd & dy, const Eigen::MatrixXd & paramToCheck, const Eigen::MatrixXd & paramGrad,
+void paramGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & paramToCheck, const Eigen::MatrixXd & paramGrad,
+                    LSTMParameters & lstmParameters, const LSTMCache & lstmCache);
+
+void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
                     const LSTMParameters & lstmParameters, const LSTMCache & lstmCache);
 
-void inputGradCheck(const Eigen::MatrixXd & dy, const Eigen::MatrixXd & inputGrad,
-                    const LSTMParameters & lstmParameters, const LSTMCache & lstmCache);
 
-
-void lstmGradientCheck(const Eigen::MatrixXd & dy, const LSTMParameters & lstmParameters, const LSTMCache & lstmCache,
+void lstmGradientCheck(const Eigen::MatrixXd & dy, LSTMParameters & lstmParameters, const LSTMCache & lstmCache,
                        const LSTMDiff & lstmDiff);
 
 void lstmParamUpdate(const double learningRate, LSTMParameters & lstmParameters, LSTMDiff & lstmDiff);
 
+//
+// Bi-lstm implementation
+//
+struct BiLSTMCache {
+    LSTMCache fwdLSTMCache;
+    LSTMCache bwdLSTMCache;
+    Eigen::MatrixXd h;
+};
 
-void lstmInputUpdate(double learningRate,
-                     const Sequence & s,
-                     Eigen::MatrixXd wordEmbedding,
-                     LSTMDiff & lstmDiff);
+struct BiLSTMParameters{
+    LSTMParameters fwdLSTMParameters;
+    LSTMParameters bwdLSTMParameters;
+};
+
+struct BiLSTMDiff {
+    LSTMDiff fwdLSTMDiff;
+    LSTMDiff bwdLSTMDiff;
+    Eigen::MatrixXd x_diff;
+};
+
+void BiLSTMInit(const int inputSize, const int hiddenDimension, BiLSTMParameters & biLSTMParameters);
+
+
+void BiLSTMForward(const Eigen::MatrixXd x, const BiLSTMParameters & biLSTMParameters, BiLSTMCache & BiLSTMCache);
+
+
+void BiLSTMBackward(const Eigen::MatrixXd & dy, const BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache,
+                    BiLSTMDiff & BiLSTMDiff);
+
+
+void paramGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & paramToCheck, const Eigen::MatrixXd & paramGrad,
+                    BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache);
+
+void inputGradCheck(const Eigen::MatrixXd & dy, Eigen::MatrixXd & inputGrad,
+                    const BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache);
+
+
+void BiLSTMGradientCheck(const Eigen::MatrixXd & dy, BiLSTMParameters & biLSTMParameters, const BiLSTMCache & BiLSTMCache,
+                         const BiLSTMDiff & BiLSTMDiff);
+
+void BiLSTMParamUpdate(const double learningRate, BiLSTMParameters & biLSTMParameters, BiLSTMDiff & BiLSTMDiff);
+
+
 //
 // Dropout implementation
 //
@@ -142,6 +180,10 @@ void dropoutForward(const Eigen::MatrixXd & x, const double dropoutRate, Dropout
 
 void dropoutBackward(const Eigen::MatrixXd & dy, const DropoutCache & dropoutCache, DropoutDiff & dropoutDiff);
 
+void dropoutInputUpdate(double learningRate,
+                        const Sequence & s,
+                        Eigen::MatrixXd & wordEmbedding,
+                        DropoutDiff & dropoutDiff);
 
 void inputGradCheck(const Eigen::MatrixXd & dy, const DropoutCache & dropoutCache, const Eigen::MatrixXd & inputGrad);
 
@@ -164,7 +206,6 @@ struct CrossEntropyDiff {
 
 void crossEntropyForward(const Eigen::MatrixXd & pred, const Eigen::MatrixXd & ref,
                          CrossEntropyCache & crossEntropyCache);
-
 
 void crossEntropyBackward(const CrossEntropyCache & crossEntropyCache, CrossEntropyDiff & crossEntropyDiff);
 

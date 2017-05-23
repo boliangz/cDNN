@@ -50,4 +50,8 @@ void processData(Sequence & s,
                  const Eigen::MatrixXd & wordEmbedding,
                  const Eigen::MatrixXd & charEmbedding);
 
+void expandWordSet(std::set<std::string> & trainWords,
+                   const std::set<std::string> & evalWords,
+                   const std::map<std::string, Eigen::MatrixXd> & preEmbedding);
+
 #endif //PARSER_LOADER_H

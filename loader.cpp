@@ -164,11 +164,17 @@ void createData(const RAWDATA & rawData,
         std::vector<int> wordIndex;
         std::vector<std::vector<int> > charIndex;
         for ( it = words.begin(); it != words.end(); ++it){
-            wordIndex.push_back(word2id.find(*it)->second);
+            if (word2id.find(*it) != word2id.end())
+                wordIndex.push_back(word2id.find(*it)->second);
+            else
+                wordIndex.push_back(word2id.find("<UNK>")->second);
 
             std::vector<int> cIndex;
             for ( std::string::iterator sit = (*it).begin(); sit != (*it).end(); ++sit) {
-                cIndex.push_back(char2id.find(std::string(1, *sit))->second);
+                if (char2id.find(std::string(1, *sit)) != char2id.end())
+                    cIndex.push_back(char2id.find(std::string(1, *sit))->second);
+                else
+                    cIndex.push_back(char2id.find("<UNK>")->second);
             }
 
             charIndex.push_back(cIndex);
@@ -210,6 +216,33 @@ void processData(Sequence & s,
             m.col(j) = charEmbedding.col(s.charIndex[i][j]);
         }
         s.charEmb.push_back(m);
+    }
+}
+
+void expandWordSet(std::set<std::string> & trainWords,
+                   const std::set<std::string> & evalWords,
+                   const std::map<std::string, Eigen::MatrixXd> & preEmbedding) {
+    for (std::set<std::string>::iterator it = evalWords.begin(); it != evalWords.end(); ++it) {
+        std::string w = *it;
+
+        // create lowercase word
+        std::string lowerWord = w;
+        std::transform(w.begin(), w.end(), lowerWord.begin(), ::tolower);
+
+        // replace digit by 0
+        std::regex r("\\d");
+        std::string lowerWordZero = lowerWord;
+        lowerWordZero = std::regex_replace(lowerWordZero, r, "0");
+
+        if (trainWords.find(w) == trainWords.end() &&
+            preEmbedding.find(w) != preEmbedding.end())
+            trainWords.insert(*it);
+        else if (trainWords.find(lowerWord) == trainWords.end() &&
+            preEmbedding.find(lowerWord) != preEmbedding.end())
+            trainWords.insert(*it);
+        else if (trainWords.find(lowerWordZero) == trainWords.end() &&
+                 preEmbedding.find(lowerWordZero) != preEmbedding.end())
+            trainWords.insert(*it);
     }
 }
 
