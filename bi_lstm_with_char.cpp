@@ -413,18 +413,5 @@ void train(const std::vector<Sequence>& training,
             std::printf("accuracy on eval set: %.2f%% (%d/%d)\n\n",
                         acc, numCorrectTags, numTags);
         }
-
-//        time_t now = time(0);
-//
-//        tm *ltm = localtime(&now);
-//        std::string outFileName = std::to_string(ltm->tm_year) + "_" + ltm->tm_mon + "_" + ltm->tm_mday + "_" + ltm->tm_hour + "_" + ltm->tm_min + "_" + ltm->tm_sec;
-//        std::string outFilePath = modelDir + "/" + outFileName + "_eval.bio";
-//        std::ofstream outFile;
-//        outFile.open(outFilePath);
-//        for ( int j = 0; j < eval.size(); ++j ) {
-//            for ( int k = 0; k < eval[j].wordIndex)
-//            outFile.write(eval[j].wo)
-//        }
-
     }
 }

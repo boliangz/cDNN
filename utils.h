@@ -2,8 +2,8 @@
 // Created by Boliang Zhang on 5/11/17.
 //
 
-#ifndef PARSER_UTILS_H
-#define PARSER_UTILS_H
+#ifndef CDNN_UTILS_H
+#define CDNN_UTILS_H
 
 #include <Eigen>
 
@@ -28,4 +28,4 @@ void printMatrix(Eigen::MatrixXd m);
 
 
 
-#endif //PARSER_UTILS_H
+#endif //CDNN_UTILS_H

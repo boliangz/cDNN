@@ -7,16 +7,12 @@
 
 int main(int argc, char* argv []) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " train_bio eval_bio pretrain_emb model_dir" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " train_bio eval_bio pretrain_emb" << std::endl;
         return 1;
     }
 
     int wordDim = 50;
     int charDim = 25;
-    int wordLSTMHiddenDim = 100;
-    int charLSTMHiddenDim = 25;
-    double learningRate = 0.01;
-    double dropoutRate = 0.5;
 
     std::string trainFile = argv[1];
     std::string evalFile = argv[2];

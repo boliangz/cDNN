@@ -2,8 +2,8 @@
 // Created by Boliang Zhang on 5/18/17.
 //
 
-#ifndef PARSER_LOADER_H
-#define PARSER_LOADER_H
+#ifndef CDNN_LOADER_H
+#define CDNN_LOADER_H
 
 #include <string>
 #include <Eigen>
@@ -54,4 +54,4 @@ void expandWordSet(std::set<std::string> & trainWords,
                    const std::set<std::string> & evalWords,
                    const std::map<std::string, Eigen::MatrixXd> & preEmbedding);
 
-#endif //PARSER_LOADER_H
+#endif //CDNN_LOADER_H
