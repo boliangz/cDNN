@@ -375,7 +375,7 @@ void train(const std::vector<Sequence>& training,
         float average = std::accumulate( epoch_loss.begin(), epoch_loss.end(), 0.0)/epoch_loss.size();
         std::cout << "epoch loss: " << average << std::endl;
         time_t trainTime = time(0) - startTime;
-        std::printf("time elapsed: %d seconds (%.4f sec/sentence)\n", trainTime, float(trainTime) / training.size());
+        std::printf("time elapsed: %d seconds (%.4f sec/sentence)\n", int(trainTime), float(trainTime) / training.size());
 
         //
         // eval

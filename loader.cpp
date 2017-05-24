@@ -124,9 +124,10 @@ void preEmbLookUp(Eigen::MatrixXd & wordEmbedding,
         std::transform(w.begin(), w.end(), lowerWord.begin(), ::tolower);
 
         // replace digit by 0
-        std::regex r("\\d");
         std::string lowerWordZero = lowerWord;
-        lowerWordZero = std::regex_replace(lowerWordZero, r, "0");
+        for (int i = 0; i < lowerWordZero.size(); ++i) {
+            if (std::isdigit(lowerWordZero[i])) lowerWordZero[i] = '0';
+        }
 
         if ( preEmbedding.find(w) != preEmbedding.end()) {  // word found in pretrained embeddings
             wordEmbedding.col(i) = preEmbedding.find(w)->second;
@@ -144,7 +145,7 @@ void preEmbLookUp(Eigen::MatrixXd & wordEmbedding,
 
     std::cout << preEmbedding.size() << " pre-trained word embeddings loaded." << std::endl;
     printf("%d / %d (%.2f%%) words have been initialized with pretrained embeddings.\n",
-           wordFound+wordLower+wordZeros, id2word.size(),
+           wordFound+wordLower+wordZeros, int(id2word.size()),
            (wordFound+wordLower+wordZeros)/float(id2word.size())*100);
     printf("%i found directly, %i after lowercasing, %i after lowercasing + zero\n",
            wordFound, wordLower, wordZeros);
@@ -230,9 +231,10 @@ void expandWordSet(std::set<std::string> & trainWords,
         std::transform(w.begin(), w.end(), lowerWord.begin(), ::tolower);
 
         // replace digit by 0
-        std::regex r("\\d");
         std::string lowerWordZero = lowerWord;
-        lowerWordZero = std::regex_replace(lowerWordZero, r, "0");
+        for (int i = 0; i < lowerWordZero.size(); ++i) {
+            if (std::isdigit(lowerWordZero[i])) lowerWordZero[i] = '0';
+        }
 
         if (trainWords.find(w) == trainWords.end() &&
             preEmbedding.find(w) != preEmbedding.end())
