@@ -21,6 +21,7 @@ main data/updated_UD_English/en-ud-train.bio data/updated_UD_English/en-ud-eval.
 ``` 
 
 ### Layer test:
+Layer test randomly generates small training set and validate each layer with gradient check.
 compile:
 ```
 g++ -std=c++0x -O3 -I lib/eigen-3.3.3/Eigen test.cpp loader.cpp nn.cpp utils.cpp -o bin/test
