@@ -126,8 +126,8 @@ void preEmbLookUp(Eigen::MatrixXd & wordEmbedding,
 
         // replace digit by 0
         std::string lowerWordZero = lowerWord;
-        for (int i = 0; i < lowerWordZero.size(); ++i) {
-            if (std::isdigit(lowerWordZero[i])) lowerWordZero[i] = '0';
+        for (int j = 0; j < lowerWordZero.size(); ++j) {
+            if (std::isdigit(lowerWordZero[j])) lowerWordZero[j] = '0';
         }
 
         if ( preEmbedding.find(w) != preEmbedding.end()) {  // word found in pretrained embeddings
