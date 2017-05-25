@@ -5,8 +5,8 @@
 #ifndef CDNN_UTILS_H
 #define CDNN_UTILS_H
 
-#include <Eigen>
-
+#include <Eigen/Core>
+#include <vector>
 
 Eigen::MatrixXd sigmoid(Eigen::MatrixXd& x);
 

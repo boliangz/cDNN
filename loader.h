@@ -6,10 +6,11 @@
 #define CDNN_LOADER_H
 
 #include <string>
-#include <Eigen>
+#include <Eigen/Core>
 #include <fstream>
 #include <set>
 #include <regex>
+#include <map>
 
 
 typedef std::vector<std::map<std::string, std::vector<std::string> > > RAWDATA;

@@ -5,7 +5,7 @@
 #ifndef CDNN_NN_H
 #define CDNN_NN_H
 
-#include <Eigen>
+#include <Eigen/Core>
 #include "loader.h"
 
 //

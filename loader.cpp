@@ -3,11 +3,12 @@
 //
 
 #include <string>
-#include <Eigen>
+#include <Eigen/Core>
 #include <fstream>
 #include <set>
 #include <regex>
 #include <iostream>
+#include <map>
 #include "loader.h"
 
 

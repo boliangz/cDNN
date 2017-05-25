@@ -5,7 +5,7 @@
 //
 // Created by Boliang Zhang on 5/11/17.
 //
-#include <Eigen>
+#include <Eigen/Core>
 #include <random>
 #include <iostream>
 #include "utils.h"

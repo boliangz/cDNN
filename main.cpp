@@ -1,5 +1,5 @@
 #include <iostream>
-#include "Eigen"
+#include <Eigen/Core>
 #include "utils.h"
 #include "bi_lstm.h"
 #include "loader.h"

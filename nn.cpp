@@ -3,7 +3,7 @@
 //
 #include <vector>
 #include <random>
-#include <Eigen>
+#include <Eigen/Core>
 #include <iostream>
 #include "nn.h"
 #include "utils.h"
