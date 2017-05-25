@@ -11,7 +11,7 @@ int main(int argc, char* argv []) {
         return 1;
     }
 
-    int wordDim = 50;
+    int wordDim = 100;
     int charDim = 25;
 
     std::string trainFile = argv[1];

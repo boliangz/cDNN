@@ -11,7 +11,7 @@
 //
 // network configuration
 //
-int wordDim = 50;
+int wordDim = 100;
 int charDim = 25;
 int wordLSTMHiddenDim = 100;
 int charLSTMHiddenDim = 25;
