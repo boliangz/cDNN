@@ -204,7 +204,6 @@ void networkGradientCheck(const Sequence & s){
 
 void train(const std::vector<Sequence>& training,
            const std::vector<Sequence>& eval,
-           std::string modelDir,
            Eigen::MatrixXd & wordEmbedding,
            const Eigen::MatrixXd & charEmbedding) {
     //

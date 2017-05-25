@@ -17,7 +17,6 @@ int main(int argc, char* argv []) {
     std::string trainFile = argv[1];
     std::string evalFile = argv[2];
     std::string preEmbeddingFile = argv[3];
-    std::string modelDir = argv[4];
 
     RAWDATA trainRawData;
     RAWDATA evalRawData;
@@ -54,7 +53,7 @@ int main(int argc, char* argv []) {
 
 //    trainData = std::vector<Sequence>(trainData.begin(), trainData.begin()+10);
 //    evalData = std::vector<Sequence>(evalData.begin(), evalData.begin()+10);
-    train(trainData, evalData, modelDir, wordEmbedding, charEmbedding);
+    train(trainData, evalData, wordEmbedding, charEmbedding);
 
     return 0;
 }

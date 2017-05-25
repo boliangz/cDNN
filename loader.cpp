@@ -52,7 +52,7 @@ void loadRawData(std::string & filePath,
     sequence["word"] = std::vector<std::string>();
     sequence["label"] = std::vector<std::string>();
     while (std::getline(indata, line)) {
-        if (line.empty()) {
+        if (line.empty() || line[0] == '#') {
             if (not sequence["word"].empty() ||
                 not sequence["label"].empty()) {
                 rawData.push_back(sequence);
@@ -63,11 +63,11 @@ void loadRawData(std::string & filePath,
         else {
             std::stringstream lineStream(line);
             std::string cell;
-            while (std::getline(lineStream, cell, ' ')) {
+            while (std::getline(lineStream, cell, '\t')) {
                 lineValues.push_back(cell);
             }
-            std::string word = lineValues[0];
-            std::string label = lineValues.back();
+            std::string word = lineValues[1];
+            std::string label = lineValues[3];
             sequence.find("word")->second.push_back(word);
             sequence.find("label")->second.push_back(label);
             lineValues.clear();
