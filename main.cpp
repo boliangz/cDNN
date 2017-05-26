@@ -11,7 +11,7 @@ int main(int argc, char* argv []) {
         return 1;
     }
 
-    int wordDim = 100;
+    int wordDim = 50;
     int charDim = 25;
 
     std::string trainFile = argv[1];
@@ -29,7 +29,7 @@ int main(int argc, char* argv []) {
 
     std::map<std::string, Eigen::MatrixXd> preEmbedding;
     std::printf("loading pre-trained embedding from: %s \n", preEmbeddingFile.c_str());
-    loadPreEmbedding(preEmbeddingFile, preEmbedding);
+//    loadPreEmbedding(preEmbeddingFile, preEmbedding);
 
     expandWordSet(trainWords, evalWords, preEmbedding);
     std::map<int, std::string> id2word, id2char, id2label;
@@ -47,7 +47,7 @@ int main(int argc, char* argv []) {
     createData(evalRawData, word2id, char2id, label2id, evalData);
 
     Eigen::MatrixXd wordEmbedding = initializeVariable(wordDim, word2id.size());
-    preEmbLookUp(wordEmbedding, preEmbedding, id2word);
+//    preEmbLookUp(wordEmbedding, preEmbedding, id2word);
 
     Eigen::MatrixXd charEmbedding = initializeVariable(charDim, char2id.size());
 

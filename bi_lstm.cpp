@@ -11,10 +11,10 @@
 //
 // network configuration
 //
-int wordDim = 100;
+int wordDim = 50;
 int wordLSTMHiddenDim = 100;
 double learningRate = 0.01;
-double dropoutRate = 0.5;
+double dropoutRate = 0;
 
 //
 // define network parameter, cache and diff
@@ -43,34 +43,65 @@ void networkForward(const Sequence & s,
     else
         dropoutForward(s.wordEmb, 0, dropoutCache);
 
+    std::cout << std::defaultfloat << dropoutCache.y.sum() << std::endl;
+    std::cout << std::hexfloat << dropoutCache.y.sum() << std::endl;
+
     // bi-directional word lstm forward
     biLSTMForward(dropoutCache.y, biLSTMParameters, biLSTMCache);
 
+    std::cout << std::defaultfloat << biLSTMCache.h.sum() << std::endl;
+    std::cout << std::hexfloat << biLSTMCache.h.sum() << std::endl;
+
+    double d = 0;
+    for (int i = 0; i < biLSTMCache.h.rows(); i++)
+        for (int j = 0 ; j < biLSTMCache.h.cols(); j ++) {
+            d += biLSTMCache.h(i,j);
+        }
+    std::cout << std::defaultfloat << d << std::endl;
+    std::cout << std::hexfloat << d << std::endl;
+
     // mlp forward
     mlpForward(biLSTMCache.h, mlpParameters, mlpCache);
+//    std::cout << std::defaultfloat << mlpCache.y.sum() << std::endl;
+//    std::cout << std::hexfloat << mlpCache.y.sum() << std::endl;
 
     // cross entropy forward
     crossEntropyForward(mlpCache.y, s.labelOneHot, crossEntropyCache);
 
     loss = crossEntropyCache.loss;
+//    std::cout << std::defaultfloat << loss.sum() << std::endl;
+//    std::cout << std::hexfloat << loss.sum() << std::endl;
     pred = crossEntropyCache.pred;
 }
 
 void networkBackward(const Sequence & s){
     // cross entropy backward
     crossEntropyBackward(crossEntropyCache, crossEntropyDiff);
+//    std::cout << std::defaultfloat << crossEntropyDiff.pred_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << crossEntropyDiff.pred_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << crossEntropyDiff.pred_diff.sum() << std::endl;
 
     // mlp backward
     mlpBackward(crossEntropyDiff.pred_diff, mlpParameters, mlpCache, mlpDiff);
+//    std::cout << std::defaultfloat << mlpDiff.x_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << mlpDiff.x_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << mlpDiff.x_diff.sum() << std::endl;
 
     // word lstm backward
     biLSTMBackward(mlpDiff.x_diff, biLSTMParameters, biLSTMCache, biLSTMDiff);
+//    std::cout << std::defaultfloat << biLSTMDiff.x_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << biLSTMDiff.x_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << biLSTMDiff.x_diff.sum() << std::endl;
 
     // dropout backward
     dropoutBackward(biLSTMDiff.x_diff, dropoutCache, dropoutDiff);
+//    std::cout << std::defaultfloat << dropoutDiff.x_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << dropoutDiff.x_diff.sum() << std::endl;
+//    std::cout << std::hexfloat << dropoutDiff.x_diff.sum() << std::endl;
+
 }
 
-void networkParamUpdate(Sequence & s,
+void networkParamUpdate(const Sequence & s,
                         Eigen::MatrixXd & wordEmbedding) {
     mlpParamUpdate(learningRate, mlpParameters, mlpDiff);
     biLSTMParamUpdate(learningRate, biLSTMParameters, biLSTMDiff);
@@ -79,8 +110,7 @@ void networkParamUpdate(Sequence & s,
 
 void paramGradCheck(const Sequence s,
                     Eigen::MatrixXd & paramToCheck,
-                    const Eigen::MatrixXd & paramGrad
-){
+                    const Eigen::MatrixXd & paramGrad){
     dropoutRate = -1;
     std::cout.precision(15);
 
@@ -111,7 +141,8 @@ void paramGradCheck(const Sequence s,
         double numericalGrad = (loss1 - loss0).sum() / (2.0 * delta);
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
     dropoutRate = 0.5;
 }
@@ -148,7 +179,8 @@ void inputGradCheck(const Sequence & s){
         double numericalGrad = (loss1 - loss0).sum() / (2 * delta);
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
     dropoutRate = 0.5;
 }
@@ -222,11 +254,11 @@ void train(const std::vector<Sequence>& training,
         //
         std::cout << "=> " << i << " epoch training starts..." << std::endl;
 
-        int numSeqToReport = 1000;
+        int numSeqToReport = 100;
         std::vector<float> epoch_loss;
         std::vector<int> index(training.size());
         std::iota(index.begin(), index.end(), 1);
-        std::random_shuffle(index.begin(), index.end());
+//        std::random_shuffle(index.begin(), index.end());
         for (int j = 0; j < training.size(); ++j){
             Sequence s = training[index[j]-1];
 

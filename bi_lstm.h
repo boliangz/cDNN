@@ -17,7 +17,7 @@ void networkForward(const Sequence & s, Eigen::MatrixXd & loss, Eigen::MatrixXd 
 
 void networkBackward(const Sequence & s);
 
-void networkParamUpdate(Sequence & s, Eigen::MatrixXd & wordEmbedding);
+void networkParamUpdate(const Sequence & s, Eigen::MatrixXd & wordEmbedding);
 
 //
 // gradient check

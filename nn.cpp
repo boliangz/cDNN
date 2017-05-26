@@ -50,8 +50,15 @@ void mlpBackward(const Eigen::MatrixXd & dy,
     long sequenceLen = dy.cols();
     long hiddenDim = W.cols();
     long inputSize = W.rows();
-
+//    std::cout << y.row(0).sum() << std::endl;
     std::vector<Eigen::MatrixXd> tmp = dsoftmax(y);
+
+    double s = 0;
+    for ( int i = 0; i < tmp.size(); i++)
+        s += tmp[i].sum();
+//    std::cout << s << std::endl;
+//    std::cout << std::hexfloat << s << std::endl;
+
 
     Eigen::MatrixXd dh(hiddenDim, inputSize);
 
@@ -117,7 +124,8 @@ void paramGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -159,7 +167,8 @@ void inputGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -252,6 +261,13 @@ void lstmForward(const Eigen::MatrixXd x,
 
         h_prev = h;
         c_prev = c;
+
+        double d = 0;
+        for (int j = 0; j < h.rows(); j++)
+            d += h(j,0);
+        std::cout << std::defaultfloat << d << std::endl;
+        std::cout << std::hexfloat << d << std::endl;
+
     }
 
 }
@@ -394,7 +410,8 @@ void paramGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -435,7 +452,8 @@ void inputGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -585,7 +603,8 @@ void paramGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -626,7 +645,8 @@ void inputGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -727,7 +747,8 @@ void dropoutInputUpdate(double learningRate,
     gradientClip(dropoutDiff.x_diff);
     int wordEmbDim = wordEmbedding.rows();
     for (int i = 0; i < s.seqLen; ++i) {
-        wordEmbedding.col(s.wordIndex[i]) -= learningRate * dropoutDiff.x_diff.col(i).topRows(wordEmbDim);
+        Eigen::MatrixXd dWord = dropoutDiff.x_diff.col(i).topRows(wordEmbDim);
+        wordEmbedding.col(s.wordIndex[i]) -= learningRate * dWord;
     }
 }
 
@@ -770,7 +791,8 @@ void inputGradCheck(const Eigen::MatrixXd & dy,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 }
 
@@ -791,6 +813,13 @@ void crossEntropyForward(const Eigen::MatrixXd & pred,
                          CrossEntropyCache & crossEntropyCache
 ){
     Eigen::MatrixXd loss = - ref.array() * pred.array().log();
+//    std::cout << loss << std::endl;
+//
+//    std::cout << std::hexfloat << loss(11, 0) << std::endl;
+//    std::cout << std::hexfloat << loss(12, 1) << std::endl;
+//    std::cout << std::hexfloat << loss(11, 2) << std::endl;
+//    std::cout << std::hexfloat << pred.array().log()(0,0) << std::endl;
+//    std::cout << std::hexfloat << pred(0,0) << std::endl;
 
     crossEntropyCache.pred = pred;
     crossEntropyCache.ref = ref;
@@ -845,7 +874,8 @@ void inputGradientCheck(const CrossEntropyCache & crossEntropyCache,
 
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
 
 }
