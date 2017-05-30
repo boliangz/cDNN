@@ -1,17 +1,19 @@
 //
 // Created by Boliang Zhang on 5/19/17.
 //
-
-//
-// Created by Boliang Zhang on 5/11/17.
-//
+#include "utils.h"
 #include <Eigen/Core>
 #include <random>
 #include <iostream>
 #include <unsupported/Eigen/MatrixFunctions>
-#include <cmath>
-#include "utils.h"
 
+double matrix_sum(Eigen::MatrixXd x){
+    double s = 0;
+    for (int i = 0; i < x.cols(); ++i)
+        for (int j = 0; j < x.rows(); ++j)
+            s += x(j, i);
+    return s;
+}
 
 Eigen::MatrixXd sigmoid(Eigen::MatrixXd& x){
     Eigen::MatrixXd result = 1 / (1 + exp((- x).array()));
@@ -36,7 +38,9 @@ Eigen::MatrixXd softmax(Eigen::MatrixXd & x){
         Eigen::MatrixXd exps = exp(x.col(i).array() - max);
 
         result.col(i) = exps / exps.sum();
+
     }
+
     return result;
 }
 
@@ -45,20 +49,13 @@ std::vector<Eigen::MatrixXd> dsoftmax(Eigen::MatrixXd& softmaxX){
     std::vector<Eigen::MatrixXd> result;
     for (int i = 0; i < softmaxX.cols(); i++) {
         std::cout.precision(20);
-//        std::cout << softmaxX.col(i).sum() << std::endl;
-//        std::cout << std::hexfloat << softmaxX.col(i).sum() << std::endl;
 
         Eigen::MatrixXd siMultiSj = softmaxX.col(i) * softmaxX.col(i).transpose();
-//        std::cout << siMultiSj << std::endl;
-//        std::cout << siMultiSj.sum() << std::endl;
 
         Eigen::MatrixXd d = softmaxX.col(i).asDiagonal();
-//        std::cout << d << std::endl;
-//        std::cout << d.sum() << std::endl;
 
-        Eigen::MatrixXd r = d - siMultiSj;
-//        std::cout << r << std::endl;
-//        std::cout << r.sum() << std::endl;
+        Eigen::MatrixXd r = (d - siMultiSj);
+
         result.push_back(r);
     }
 
@@ -73,7 +70,7 @@ Eigen::MatrixXd dsigmoid(Eigen::MatrixXd& sigmoidX){
 }
 
 Eigen::MatrixXd dtanh(Eigen::MatrixXd& tanhX){
-    Eigen::MatrixXd result = 1 - pow(tanhX.array(), 2);
+    Eigen::MatrixXd result = 1 - tanhX.array() * tanhX.array();
 
     return result;
 }
@@ -89,8 +86,7 @@ Eigen::MatrixXd initializeVariable(int row, int column){
     Eigen::MatrixXd m(row, column);
     for (int i=0; i < row; i++){
         for (int j=0; j < column; j++){
-//            m(i, j) = distribution(gen) * drange;
-            m(i, j) = 0.5;
+            m(i, j) = distribution(gen) * drange;
         }
     }
     return m;
@@ -102,8 +98,4 @@ void gradientClip(Eigen::MatrixXd & gradient){
     c.fill(clip);
     gradient = gradient.cwiseMin(c);
     gradient = gradient.cwiseMax(-c);
-}
-
-void printMatrix(Eigen::MatrixXd m){
-    std::cout << m << "\n" << std::endl;
 }

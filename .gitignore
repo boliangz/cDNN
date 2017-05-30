@@ -3,8 +3,9 @@ model/
 cmake-build-debug/
 .idea/
 bin/
-third_party/eigen-3.3.3/
+data/
 
 # files to ignore
 **/*.o
 **/.DS_Store
+CMakeLists.txt

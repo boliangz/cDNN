@@ -40,8 +40,7 @@ void mlpForward(const Eigen::MatrixXd x,
 void mlpBackward(const Eigen::MatrixXd & dy,
                  const MLPParameters & mlpParameters,
                  const MLPCache & mlpCache,
-                 MLPDiff & mlpDiff
-){
+                 MLPDiff & mlpDiff){
     Eigen::MatrixXd W = mlpParameters.W;
 
     Eigen::MatrixXd x = mlpCache.x;
@@ -50,17 +49,10 @@ void mlpBackward(const Eigen::MatrixXd & dy,
     long sequenceLen = dy.cols();
     long hiddenDim = W.cols();
     long inputSize = W.rows();
-//    std::cout << y.row(0).sum() << std::endl;
+
     std::vector<Eigen::MatrixXd> tmp = dsoftmax(y);
 
-    double s = 0;
-    for ( int i = 0; i < tmp.size(); i++)
-        s += tmp[i].sum();
-//    std::cout << s << std::endl;
-//    std::cout << std::hexfloat << s << std::endl;
-
-
-    Eigen::MatrixXd dh(hiddenDim, inputSize);
+    Eigen::MatrixXd dh(hiddenDim, sequenceLen);
 
     for (int i = 0; i < sequenceLen; i++) {
         tmp[i] = tmp[i].array().colwise() * dy.col(i).array();
@@ -78,7 +70,7 @@ void mlpBackward(const Eigen::MatrixXd & dy,
 
         mlpDiff.W_diff += dW;
         mlpDiff.b_diff += db;
-        mlpDiff.x_diff.col(i) += dx;
+        mlpDiff.x_diff.col(i) = dx;
     }
 }
 
@@ -262,22 +254,14 @@ void lstmForward(const Eigen::MatrixXd x,
         h_prev = h;
         c_prev = c;
 
-        double d = 0;
-        for (int j = 0; j < h.rows(); j++)
-            d += h(j,0);
-        std::cout << std::defaultfloat << d << std::endl;
-        std::cout << std::hexfloat << d << std::endl;
-
     }
-
 }
 
 
 void lstmBackward(const Eigen::MatrixXd & dy,
                   const LSTMParameters & lstmParameters,
                   const LSTMCache & lstmCache,
-                  LSTMDiff & lstmDiff
-){
+                  LSTMDiff & lstmDiff){
     Eigen::MatrixXd Wi = lstmParameters.Wi;
     Eigen::MatrixXd Wf = lstmParameters.Wf;
     Eigen::MatrixXd Wc = lstmParameters.Wc;
@@ -523,6 +507,10 @@ void biLSTMInit(const int inputSize,
 void biLSTMForward(const Eigen::MatrixXd x,
                    const BiLSTMParameters & biLSTMParameters,
                    BiLSTMCache & biLSTMCache){
+    long sequenceLen = x.cols();
+    long hiddenDim = biLSTMParameters.fwdLSTMParameters.Wi.cols();
+    long inputSize = biLSTMParameters.fwdLSTMParameters.Wi.rows() - hiddenDim;
+
     // bi-directional word lstm forward
     lstmForward(
             x,
@@ -530,13 +518,15 @@ void biLSTMForward(const Eigen::MatrixXd x,
             biLSTMCache.fwdLSTMCache
     );
     lstmForward(
-            x.colwise().reverse(),  // backward lstm by reversing input
+            x.rowwise().reverse(),  // backward lstm by reversing input
             biLSTMParameters.bwdLSTMParameters,
             biLSTMCache.bwdLSTMCache
     );
 
     biLSTMCache.h = Eigen::MatrixXd(biLSTMCache.fwdLSTMCache.h.rows() * 2, biLSTMCache.fwdLSTMCache.h.cols());
-    biLSTMCache.h << biLSTMCache.fwdLSTMCache.h, biLSTMCache.bwdLSTMCache.h.colwise().reverse();
+
+    biLSTMCache.h << biLSTMCache.fwdLSTMCache.h, biLSTMCache.bwdLSTMCache.h.rowwise().reverse();
+
 }
 
 
@@ -552,14 +542,14 @@ void biLSTMBackward(const Eigen::MatrixXd & dy,
             biLSTMDiff.fwdLSTMDiff
     );
 
-    Eigen::MatrixXd bwdDy = dy.bottomRows(dy.rows()/2).colwise().reverse();
+    Eigen::MatrixXd bwdDy = dy.bottomRows(dy.rows()/2).rowwise().reverse();
     lstmBackward(
             bwdDy,
             biLSTMParameters.bwdLSTMParameters,
             biLSTMCache.bwdLSTMCache,
             biLSTMDiff.bwdLSTMDiff
     );
-    biLSTMDiff.x_diff = biLSTMDiff.fwdLSTMDiff.x_diff + biLSTMDiff.bwdLSTMDiff.x_diff.colwise().reverse();
+    biLSTMDiff.x_diff = biLSTMDiff.fwdLSTMDiff.x_diff + biLSTMDiff.bwdLSTMDiff.x_diff.rowwise().reverse();
 }
 
 
@@ -813,13 +803,6 @@ void crossEntropyForward(const Eigen::MatrixXd & pred,
                          CrossEntropyCache & crossEntropyCache
 ){
     Eigen::MatrixXd loss = - ref.array() * pred.array().log();
-//    std::cout << loss << std::endl;
-//
-//    std::cout << std::hexfloat << loss(11, 0) << std::endl;
-//    std::cout << std::hexfloat << loss(12, 1) << std::endl;
-//    std::cout << std::hexfloat << loss(11, 2) << std::endl;
-//    std::cout << std::hexfloat << pred.array().log()(0,0) << std::endl;
-//    std::cout << std::hexfloat << pred(0,0) << std::endl;
 
     crossEntropyCache.pred = pred;
     crossEntropyCache.ref = ref;

@@ -1,12 +1,12 @@
 //
 // Created by Boliang Zhang on 5/19/17.
 //
-#include <iostream>
-#include <numeric>
-#include <ctime>
 #include "nn.h"
 #include "bi_lstm_with_char.h"
 #include "loader.h"
+#include <iostream>
+#include <numeric>
+#include <ctime>
 
 //
 // network configuration
@@ -21,26 +21,19 @@ double dropoutRate = 0.5;
 //
 // define network parameter, cache and diff
 //
-LSTMParameters charFWDLSTMParam;
-LSTMParameters charBWDLSTMParam;
-LSTMParameters wordFWDLSTMParam;
-LSTMParameters wordBWDLSTMParam;
+BiLSTMParameters charBiLSTMParam;
+BiLSTMParameters wordBiLSTMParam;
 MLPParameters mlpParameters;
 
-LSTMCache charFWDLSTMCache;
-std::vector<LSTMCache> charFWDLSTMCacheVec;
-LSTMCache charBWDLSTMCache;
-std::vector<LSTMCache> charBWDLSTMCacheVec;
-LSTMCache wordFWDLSTMCache;
-LSTMCache wordBWDLSTMCache;
+BiLSTMCache charBiLSTMCache;
+std::vector<BiLSTMCache> charBiLSTMCacheVec;
+BiLSTMCache wordBiSTMCache;
 MLPCache mlpCache;
 DropoutCache dropoutCache;
 CrossEntropyCache crossEntropyCache;
 
-LSTMDiff charFWDLSTMDiff;
-LSTMDiff charBWDLSTMDiff;
-LSTMDiff wordFWDLSTMDiff;
-LSTMDiff wordBWDLSTMDiff;
+BiLSTMDiff charBiLSTMDiff;
+BiLSTMDiff wordBiLSTMDiff;
 MLPDiff mlpDiff;
 DropoutDiff dropoutDiff;
 CrossEntropyDiff crossEntropyDiff;
@@ -54,30 +47,29 @@ void networkForward(const Sequence & s,
 
     // bi-directional char lstm forward
     Eigen::MatrixXd sequcenCharEmb(2 * charLSTMHiddenDim, sequenceLen);
-    charFWDLSTMCacheVec.clear();
-    charBWDLSTMCacheVec.clear();
+    charBiLSTMCacheVec.clear();
     for (int j = 0; j < sequenceLen; ++j ) {
-        lstmForward(s.charEmb[j], charFWDLSTMParam, charFWDLSTMCache);
-        LSTMCache cFWD = charFWDLSTMCache;
-        charFWDLSTMCacheVec.push_back(cFWD);
-        lstmForward(s.charEmb[j].colwise().reverse(), charBWDLSTMParam, charBWDLSTMCache);
-        LSTMCache cBWD = charBWDLSTMCache;
-        charBWDLSTMCacheVec.push_back(cBWD);
-        sequcenCharEmb.col(j) << charFWDLSTMCache.h.rightCols(1), charBWDLSTMCache.h.rightCols(1);
+        biLSTMForward(s.charEmb[j], charBiLSTMParam, charBiLSTMCache);
+        BiLSTMCache charCache = charBiLSTMCache;
+        charBiLSTMCacheVec.push_back(charCache);
+        sequcenCharEmb.col(j) << charBiLSTMCache.fwdLSTMCache.h.rightCols(1),
+                charBiLSTMCache.bwdLSTMCache.h.rightCols(1);
     }
-    // input dropout forward
+
+    // dropout forward
     Eigen::MatrixXd dropoutInput(wordDim + 2 * charLSTMHiddenDim, sequenceLen);
     dropoutInput << s.wordEmb, sequcenCharEmb;  // concatenate word embedding and two character embeddings.
-    dropoutForward(dropoutInput, dropoutRate, dropoutCache);
+    if (isTrain)
+        dropoutForward(dropoutInput, dropoutRate, dropoutCache);
+    else
+        dropoutForward(dropoutInput, 0, dropoutCache);
+
 
     // bi-directional word lstm forward
-    lstmForward(dropoutCache.y, wordFWDLSTMParam, wordFWDLSTMCache);
-    lstmForward(dropoutCache.y.colwise().reverse(), wordBWDLSTMParam, wordBWDLSTMCache);
+    biLSTMForward(dropoutCache.y, wordBiLSTMParam, wordBiSTMCache);
 
     // mlp forward
-    Eigen::MatrixXd mlpInput(2 * wordLSTMHiddenDim, sequenceLen);
-    mlpInput << wordFWDLSTMCache.h, wordBWDLSTMCache.h.colwise().reverse();
-    mlpForward(mlpInput, mlpParameters, mlpCache);
+    mlpForward(wordBiSTMCache.h, mlpParameters, mlpCache);
 
     // cross entropy forward
     crossEntropyForward(mlpCache.y, s.labelOneHot, crossEntropyCache);
@@ -96,55 +88,36 @@ void networkBackward(const Sequence & s){
     mlpBackward(crossEntropyDiff.pred_diff, mlpParameters, mlpCache, mlpDiff);
 
     // word lstm backward
-    Eigen::MatrixXd wordFWDLSTMdy = mlpDiff.x_diff.topRows(wordLSTMHiddenDim);
-    lstmBackward(wordFWDLSTMdy, wordFWDLSTMParam, wordFWDLSTMCache, wordFWDLSTMDiff);
-
-    Eigen::MatrixXd wordBWDLSTMdy = mlpDiff.x_diff.bottomRows(wordLSTMHiddenDim).colwise().reverse();
-    lstmBackward(wordBWDLSTMdy, wordBWDLSTMParam, wordBWDLSTMCache, wordBWDLSTMDiff);
+    biLSTMBackward(mlpDiff.x_diff, wordBiLSTMParam, wordBiSTMCache, wordBiLSTMDiff);
 
     // dropout backward
-    Eigen::MatrixXd droputDy = wordFWDLSTMDiff.x_diff + wordBWDLSTMDiff.x_diff.colwise().reverse();
-    dropoutBackward(droputDy, dropoutCache, dropoutDiff);
+    dropoutBackward(wordBiLSTMDiff.x_diff, dropoutCache, dropoutDiff);
 
     // char lstm backward
-    Eigen::MatrixXd charFWDLSTMdy = dropoutDiff.x_diff.block(wordDim, 0, charLSTMHiddenDim, sequenceLen);
-    Eigen::MatrixXd charBWDLSTMdy = dropoutDiff.x_diff.block(wordDim + charLSTMHiddenDim, 0, charLSTMHiddenDim, sequenceLen);
-
     for (int i = 0; i < sequenceLen; i++) {
         int tokenLen = s.charEmb[i].cols();
-        Eigen::MatrixXd tmpDy(charLSTMHiddenDim, tokenLen);
-        tmpDy.setZero();
+        Eigen::MatrixXd charBiLSTMDy(charLSTMHiddenDim * 2, tokenLen);
+        charBiLSTMDy.setZero();
 
-        tmpDy.rightCols(1) = charFWDLSTMdy.col(i);
+        charBiLSTMDy.rightCols(1) = dropoutDiff.x_diff.block(wordDim, i, charLSTMHiddenDim * 2, 1);
+        Eigen::MatrixXd tmp = charBiLSTMDy.bottomRows(charLSTMHiddenDim).rowwise().reverse();
+        charBiLSTMDy.bottomRows(charLSTMHiddenDim) = tmp;
 
-        LSTMDiff tmpCharFWDLSTMDiff;
-        lstmBackward(tmpDy, charFWDLSTMParam, charFWDLSTMCacheVec[i], tmpCharFWDLSTMDiff);
-        if (i == 0) {
-            charFWDLSTMDiff = tmpCharFWDLSTMDiff;
+        BiLSTMDiff tmpCharBiLSTMDiff;
+        biLSTMBackward(charBiLSTMDy, charBiLSTMParam, charBiLSTMCacheVec[i], tmpCharBiLSTMDiff);
+        if (i == 0){
+            charBiLSTMDiff = tmpCharBiLSTMDiff;
         } else {
-            charFWDLSTMDiff += tmpCharFWDLSTMDiff;
+            charBiLSTMDiff += tmpCharBiLSTMDiff;
         }
-
-        tmpDy.rightCols(1) = charBWDLSTMdy.col(i);
-
-        LSTMDiff tmpCharBWDLSTMDiff;
-        lstmBackward(tmpDy, charBWDLSTMParam, charBWDLSTMCacheVec[i], tmpCharBWDLSTMDiff);
-        if (i == 0) {
-            charBWDLSTMDiff = tmpCharBWDLSTMDiff;
-        } else {
-            charBWDLSTMDiff += tmpCharBWDLSTMDiff;
-        }
-
     }
 }
 
 void networkParamUpdate(Sequence & s,
                         Eigen::MatrixXd & wordEmbedding) {
     mlpParamUpdate(learningRate, mlpParameters, mlpDiff);
-    lstmParamUpdate(learningRate, wordFWDLSTMParam, wordFWDLSTMDiff);
-    lstmParamUpdate(learningRate, wordBWDLSTMParam, wordBWDLSTMDiff);
-    lstmParamUpdate(learningRate, charFWDLSTMParam, charFWDLSTMDiff);
-    lstmParamUpdate(learningRate, charBWDLSTMParam, charBWDLSTMDiff);
+    biLSTMParamUpdate(learningRate, wordBiLSTMParam, wordBiLSTMDiff);
+    biLSTMParamUpdate(learningRate, charBiLSTMParam, charBiLSTMDiff);
     dropoutInputUpdate(learningRate, s, wordEmbedding, dropoutDiff);
 }
 
@@ -182,7 +155,8 @@ void paramGradCheck(const Sequence s,
         double numericalGrad = (loss1 - loss0).sum() / (2.0 * delta);
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
     dropoutRate = 0.5;
 }
@@ -219,7 +193,8 @@ void inputGradCheck(const Sequence & s){
         double numericalGrad = (loss1 - loss0).sum() / (2 * delta);
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
-        std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
+        if (rel_error > 10e-5)
+            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
     dropoutRate = 0.5;
 }
@@ -231,78 +206,110 @@ void networkGradientCheck(const Sequence & s){
     std::cout << "=> gradient checking b" << std::endl;
     paramGradCheck(s, mlpParameters.W, mlpDiff.W_diff);
 
-    std::cout << "####### checking wordFWDLSTMDiff ########" << std::endl;
+    std::cout << "####### checking wordBiLSTMDiff.fwdLSTMDiff ########" << std::endl;
     std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.Wi, wordFWDLSTMDiff.Wi_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.Wi,
+                   wordBiLSTMDiff.fwdLSTMDiff.Wi_diff);
     std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.Wf, wordFWDLSTMDiff.Wf_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.Wf,
+                   wordBiLSTMDiff.fwdLSTMDiff.Wf_diff);
     std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.Wc, wordFWDLSTMDiff.Wc_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.Wc,
+                   wordBiLSTMDiff.fwdLSTMDiff.Wc_diff);
     std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.Wo, wordFWDLSTMDiff.Wo_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.Wo,
+                   wordBiLSTMDiff.fwdLSTMDiff.Wo_diff);
     std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.bi, wordFWDLSTMDiff.bi_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.bi,
+                   wordBiLSTMDiff.fwdLSTMDiff.bi_diff);
     std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.bf, wordFWDLSTMDiff.bf_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.bf,
+                   wordBiLSTMDiff.fwdLSTMDiff.bf_diff);
     std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.bc, wordFWDLSTMDiff.bc_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.bc,
+                   wordBiLSTMDiff.fwdLSTMDiff.bc_diff);
     std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(s, wordFWDLSTMParam.bo, wordFWDLSTMDiff.bo_diff);
+    paramGradCheck(s, wordBiLSTMParam.fwdLSTMParameters.bo,
+                   wordBiLSTMDiff.fwdLSTMDiff.bo_diff);
 
-    std::cout << "####### checking wordBWDLSTMDiff ########" << std::endl;
+    std::cout << "####### checking wordBiLSTMDiff.bwdLSTMDiff ########" << std::endl;
     std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.Wi, wordBWDLSTMDiff.Wi_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.Wi,
+                   wordBiLSTMDiff.bwdLSTMDiff.Wi_diff);
     std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.Wf, wordBWDLSTMDiff.Wf_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.Wf,
+                   wordBiLSTMDiff.bwdLSTMDiff.Wf_diff);
     std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.Wc, wordBWDLSTMDiff.Wc_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.Wc,
+                   wordBiLSTMDiff.bwdLSTMDiff.Wc_diff);
     std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.Wo, wordBWDLSTMDiff.Wo_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.Wo,
+                   wordBiLSTMDiff.bwdLSTMDiff.Wo_diff);
     std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.bi, wordBWDLSTMDiff.bi_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.bi,
+                   wordBiLSTMDiff.bwdLSTMDiff.bi_diff);
     std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.bf, wordBWDLSTMDiff.bf_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.bf,
+                   wordBiLSTMDiff.bwdLSTMDiff.bf_diff);
     std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.bc, wordBWDLSTMDiff.bc_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.bc,
+                   wordBiLSTMDiff.bwdLSTMDiff.bc_diff);
     std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(s, wordBWDLSTMParam.bo, wordBWDLSTMDiff.bo_diff);
+    paramGradCheck(s, wordBiLSTMParam.bwdLSTMParameters.bo,
+                   wordBiLSTMDiff.bwdLSTMDiff.bo_diff);
     std::cout << "=> gradient checking x" << std::endl;
 
-    std::cout << "####### checking charFWDLSTMDiff ########" << std::endl;
+    std::cout << "####### checking charBiLSTMDiff.fwdLSTMDiff ########" << std::endl;
     std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wi, charFWDLSTMDiff.Wi_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.Wi,
+                   charBiLSTMDiff.fwdLSTMDiff.Wi_diff);
     std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wf, charFWDLSTMDiff.Wf_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.Wf,
+                   charBiLSTMDiff.fwdLSTMDiff.Wf_diff);
     std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wc, charFWDLSTMDiff.Wc_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.Wc,
+                   charBiLSTMDiff.fwdLSTMDiff.Wc_diff);
     std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.Wo, charFWDLSTMDiff.Wo_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.Wo,
+                   charBiLSTMDiff.fwdLSTMDiff.Wo_diff);
     std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bi, charFWDLSTMDiff.bi_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.bi,
+                   charBiLSTMDiff.fwdLSTMDiff.bi_diff);
     std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bf, charFWDLSTMDiff.bf_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.bf,
+                   charBiLSTMDiff.fwdLSTMDiff.bf_diff);
     std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bc, charFWDLSTMDiff.bc_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.bc,
+                   charBiLSTMDiff.fwdLSTMDiff.bc_diff);
     std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(s, charFWDLSTMParam.bo, charFWDLSTMDiff.bo_diff);
+    paramGradCheck(s, charBiLSTMParam.fwdLSTMParameters.bo,
+                   charBiLSTMDiff.fwdLSTMDiff.bo_diff);
 
-    std::cout << "####### checking charBWDLSTMDiff ########" << std::endl;
+    std::cout << "####### checking charBiLSTMDiff.bwdLSTMDiff ########" << std::endl;
     std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wi, charBWDLSTMDiff.Wi_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.Wi,
+                   charBiLSTMDiff.bwdLSTMDiff.Wi_diff);
     std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wf, charBWDLSTMDiff.Wf_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.Wf,
+                   charBiLSTMDiff.bwdLSTMDiff.Wf_diff);
     std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wc, charBWDLSTMDiff.Wc_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.Wc,
+                   charBiLSTMDiff.bwdLSTMDiff.Wc_diff);
     std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.Wo, charBWDLSTMDiff.Wo_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.Wo,
+                   charBiLSTMDiff.bwdLSTMDiff.Wo_diff);
     std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bi, charBWDLSTMDiff.bi_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.bi,
+                   charBiLSTMDiff.bwdLSTMDiff.bi_diff);
     std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bf, charBWDLSTMDiff.bf_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.bf,
+                   charBiLSTMDiff.bwdLSTMDiff.bf_diff);
     std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bc, charBWDLSTMDiff.bc_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.bc,
+                   charBiLSTMDiff.bwdLSTMDiff.bc_diff);
     std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(s, charBWDLSTMParam.bo, charBWDLSTMDiff.bo_diff);
+    paramGradCheck(s, charBiLSTMParam.bwdLSTMParameters.bo,
+                   charBiLSTMDiff.bwdLSTMDiff.bo_diff);
 
     std::cout << "=> gradient checking wordEmb" << std::endl;
     inputGradCheck(s);
@@ -316,10 +323,8 @@ void train(const std::vector<Sequence>& training,
     //
     // initialize parameters
     //
-    lstmInit(charDim, charLSTMHiddenDim, charFWDLSTMParam);
-    lstmInit(charDim, charLSTMHiddenDim, charBWDLSTMParam);
-    lstmInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordFWDLSTMParam);
-    lstmInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordBWDLSTMParam);
+    biLSTMInit(charDim, charLSTMHiddenDim, charBiLSTMParam);
+    biLSTMInit(wordDim + 2 * charLSTMHiddenDim, wordLSTMHiddenDim, wordBiLSTMParam);
     int labelSize = training[0].labelOneHot.rows();
     mlpInit(2 * wordLSTMHiddenDim, labelSize, mlpParameters);
 

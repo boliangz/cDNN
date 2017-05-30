@@ -78,13 +78,24 @@ void loadRawData(std::string & filePath,
 
 void set2map(const std::set<std::string> & s,
              std::map<int, std::string> & id2t,
-             std::map<std::string, int> & t2id) {
-    id2t[0] = "<UNK>";
-    t2id["<UNK>"] = 0;
-    std::set<std::string>::iterator it;
-    int index = 1;
+             std::map<std::string, int> & t2id,
+             bool addUNK) {
+    int index;
+    if (addUNK) {
+        id2t[0] = "<UNK>";
+        t2id["<UNK>"] = 0;
+        index = 1;
+    } else {
+        index = 0;
+    }
 
-    for ( it = s.begin(); it != s.end(); ++it) {
+    std::vector<std::string> v(s.begin(), s.end());
+
+    std::sort(v.begin(), v.end());
+
+    std::vector<std::string>::iterator it;
+
+    for ( it = v.begin(); it != v.end(); ++it) {
         id2t[index] = * it;
         t2id[* it] = index;
         index++;
@@ -241,7 +252,7 @@ void expandWordSet(std::set<std::string> & trainWords,
             preEmbedding.find(w) != preEmbedding.end())
             trainWords.insert(*it);
         else if (trainWords.find(lowerWord) == trainWords.end() &&
-            preEmbedding.find(lowerWord) != preEmbedding.end())
+                 preEmbedding.find(lowerWord) != preEmbedding.end())
             trainWords.insert(*it);
         else if (trainWords.find(lowerWordZero) == trainWords.end() &&
                  preEmbedding.find(lowerWordZero) != preEmbedding.end())

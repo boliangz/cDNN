@@ -8,6 +8,8 @@
 #include <Eigen/Core>
 #include <vector>
 
+double matrix_sum(Eigen::MatrixXd x);
+
 Eigen::MatrixXd sigmoid(Eigen::MatrixXd& x);
 
 Eigen::MatrixXd tanh(Eigen::MatrixXd& x);
@@ -23,9 +25,5 @@ Eigen::MatrixXd dtanh(Eigen::MatrixXd& tanhX);
 Eigen::MatrixXd initializeVariable(int row, int column);
 
 void gradientClip(Eigen::MatrixXd & gradient);
-
-void printMatrix(Eigen::MatrixXd m);
-
-
 
 #endif //CDNN_UTILS_H

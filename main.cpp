@@ -1,8 +1,9 @@
-#include <iostream>
-#include <Eigen/Core>
 #include "utils.h"
 #include "bi_lstm.h"
 #include "loader.h"
+#include <iostream>
+#include <Eigen/Core>
+
 
 
 int main(int argc, char* argv []) {
@@ -11,7 +12,7 @@ int main(int argc, char* argv []) {
         return 1;
     }
 
-    int wordDim = 50;
+    int wordDim = 100;
     int charDim = 25;
 
     std::string trainFile = argv[1];
@@ -29,17 +30,17 @@ int main(int argc, char* argv []) {
 
     std::map<std::string, Eigen::MatrixXd> preEmbedding;
     std::printf("loading pre-trained embedding from: %s \n", preEmbeddingFile.c_str());
-//    loadPreEmbedding(preEmbeddingFile, preEmbedding);
+    loadPreEmbedding(preEmbeddingFile, preEmbedding);
 
     expandWordSet(trainWords, evalWords, preEmbedding);
+
     std::map<int, std::string> id2word, id2char, id2label;
     std::map<std::string, int> word2id, char2id, label2id;
-//    trainWords.insert(evalWords.begin(), evalWords.end());
-    set2map(trainWords, id2word, word2id);
+    set2map(trainWords, id2word, word2id, true);
     trainChars.insert(evalChars.begin(), evalChars.end());
-    set2map(trainChars, id2char, char2id);
+    set2map(trainChars, id2char, char2id, true);
     trainLabels.insert(evalLabels.begin(), evalLabels.end());
-    set2map(trainLabels, id2label, label2id);
+    set2map(trainLabels, id2label, label2id, false);
 
     std::vector<Sequence> trainData;
     std::vector<Sequence> evalData;
@@ -47,12 +48,10 @@ int main(int argc, char* argv []) {
     createData(evalRawData, word2id, char2id, label2id, evalData);
 
     Eigen::MatrixXd wordEmbedding = initializeVariable(wordDim, word2id.size());
-//    preEmbLookUp(wordEmbedding, preEmbedding, id2word);
+    preEmbLookUp(wordEmbedding, preEmbedding, id2word);
 
     Eigen::MatrixXd charEmbedding = initializeVariable(charDim, char2id.size());
 
-//    trainData = std::vector<Sequence>(trainData.begin(), trainData.begin()+10);
-//    evalData = std::vector<Sequence>(evalData.begin(), evalData.begin()+10);
     train(trainData, evalData, wordEmbedding, charEmbedding);
 
     return 0;

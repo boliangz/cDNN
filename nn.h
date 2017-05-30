@@ -136,6 +136,12 @@ struct BiLSTMDiff {
     LSTMDiff fwdLSTMDiff;
     LSTMDiff bwdLSTMDiff;
     Eigen::MatrixXd x_diff;
+
+    BiLSTMDiff& operator+=(BiLSTMDiff & a) {
+        this->fwdLSTMDiff += a.fwdLSTMDiff;
+        this->bwdLSTMDiff += a.bwdLSTMDiff;
+        return *this;
+    }
 };
 
 void biLSTMInit(const int inputSize, const int hiddenDimension, BiLSTMParameters & biLSTMParameters);

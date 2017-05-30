@@ -30,7 +30,10 @@ void loadPreEmbedding(std::string & filePath, std::map<std::string, Eigen::Matri
 
 void loadRawData(std::string & filePath, RAWDATA & rawData);
 
-void set2map(const std::set<std::string> & s, std::map<int, std::string> & id2t, std::map<std::string, int> & t2id);
+void set2map(const std::set<std::string> & s,
+             std::map<int, std::string> & id2t,
+             std::map<std::string, int> & t2id,
+             bool addUNK);
 
 void createTokenSet(const RAWDATA & rawData,
                     std::set<std::string> & words,
