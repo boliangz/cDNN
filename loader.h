@@ -51,8 +51,8 @@ void createData(const RAWDATA & rawData,
                 std::vector<Sequence> & data);
 
 void processData(Sequence & s,
-                 const Eigen::MatrixXd & wordEmbedding,
-                 const Eigen::MatrixXd & charEmbedding);
+                 const Eigen::MatrixXd& wordEmbedding,
+                 const Eigen::MatrixXd& charEmbedding);
 
 void expandWordSet(std::set<std::string> & trainWords,
                    const std::set<std::string> & evalWords,

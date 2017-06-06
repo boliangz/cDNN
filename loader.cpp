@@ -63,11 +63,11 @@ void loadRawData(std::string & filePath,
         else {
             std::stringstream lineStream(line);
             std::string cell;
-            while (std::getline(lineStream, cell, '\t')) {
+            while (std::getline(lineStream, cell, ' ')) {
                 lineValues.push_back(cell);
             }
-            std::string word = lineValues[1];
-            std::string label = lineValues[3];
+            std::string word = lineValues[0];
+            std::string label = lineValues.back();
             sequence.find("word")->second.push_back(word);
             sequence.find("label")->second.push_back(label);
             lineValues.clear();
@@ -214,16 +214,16 @@ void createData(const RAWDATA & rawData,
 }
 
 void processData(Sequence & s,
-                 const Eigen::MatrixXd & wordEmbedding,
-                 const Eigen::MatrixXd & charEmbedding) {
-    int wordEmbDim = wordEmbedding.rows();
-    int charEmbDim = charEmbedding.rows();
+                 const Eigen::MatrixXd& wordEmbedding,
+                 const Eigen::MatrixXd& charEmbedding) {
+    long wordEmbDim = wordEmbedding.rows();
+    long charEmbDim = charEmbedding.rows();
 
     s.wordEmb = Eigen::MatrixXd::Constant(wordEmbDim, s.seqLen, 0);
     for (int i = 0; i < s.seqLen; i++) {
         s.wordEmb.col(i) = wordEmbedding.col(s.wordIndex[i]);
 
-        int charLen = s.charIndex[i].size();
+        long charLen = s.charIndex[i].size();
         Eigen::MatrixXd m(charEmbDim, charLen);
         for (int j = 0; j < charLen; ++j) {
             m.col(j) = charEmbedding.col(s.charIndex[i][j]);

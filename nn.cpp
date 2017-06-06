@@ -1,56 +1,181 @@
 //
 // Created by Boliang Zhang on 5/19/17.
 //
+#include "nn.h"
+#include "utils.h"
+#include "loader.h"
 #include <vector>
 #include <random>
 #include <Eigen/Core>
 #include <iostream>
-#include "nn.h"
-#include "utils.h"
-#include "loader.h"
+
+//
+// Base class implementation
+//
+void Layer::copyParameters(const std::map<std::string, Eigen::MatrixXd*>& parameters){
+    std::map<std::string, Eigen::MatrixXd*>::iterator it;
+    for (it = this->parameters.begin(); it != this->parameters.end(); ++it) {
+        std::string param_name = it->first;
+        Eigen::MatrixXd* param = it->second;
+
+        delete param;
+
+        it->second = parameters.at(param_name);
+    }
+}
+
+void Layer::forward(const std::vector<Eigen::MatrixXd> & input) {
+    batchCache.clear();
+    batchOutput.clear();
+    for (int i = 0; i < input.size(); ++i) {
+        forward(input[i]);
+        batchCache.push_back(cache);
+        batchOutput.push_back(cache[name+"_output"]);
+    }
+}
+
+void Layer::backward(const std::vector<Eigen::MatrixXd> & dy) {
+    batchDiff.clear();
+    batchInputDiff.clear();
+    for (int i = 0; i < dy.size(); ++i) {
+        cache = batchCache[i];
+        backward(dy[i]);
+
+        batchDiff.push_back(diff);
+        batchInputDiff.push_back(diff[name+"_input"]);
+    }
+    for (int i = 0; i < batchDiff.size(); ++i){
+        for (auto & d: batchDiff[i]) {
+            if (d.first == name+"_input") continue;
+            if (i == 0){
+                diff[d.first] = d.second;
+            } else {
+                diff[d.first] = diff[d.first].array() + d.second.array();
+            }
+        }
+    }
+}
+
+void Layer::update(float learningRate) {
+    mtx.lock();
+
+    std::map<std::string, Eigen::MatrixXd*>::iterator it;
+    for (it = parameters.begin(); it != parameters.end(); ++it) {
+        auto param_name = it->first;
+        auto param = it->second;
+
+        *param -= learningRate * diff[param_name];
+    }
+
+    mtx.unlock();
+}
+
+void Layer::gradientCheck() {
+    auto input = cache[name+"_input"];
+    auto dy = cache[name+"_dy"];
+
+    std::cout << "=> " + name + " gradient checking..." << std::endl;
+
+    int num_checks = 10;
+    double delta = 10e-5;
+
+    std::vector<std::pair<std::string, Eigen::MatrixXd*> > paramToCheck;
+    std::map<std::string, Eigen::MatrixXd*>::iterator it;
+    for (it = parameters.begin(); it != parameters.end(); ++it)
+        paramToCheck.push_back({it->first, it->second});
+    paramToCheck.push_back({name+"_input", &input});
+
+    std::cout.precision(15);
+    for (int i = 0; i < paramToCheck.size(); ++i) {
+        auto paramName = paramToCheck[i].first;
+        auto param = paramToCheck[i].second;
+
+        std::printf("checking %s %s\n", name.c_str(), paramName.c_str());
+
+        assert(param->rows() == diff[paramName].rows()
+               || param->cols() == diff[paramName].cols());
+
+        for (int j = 0; j < num_checks; ++j) {
+            int randRow = rand() % (int)(param->rows());
+            int randCol = rand() % (int)(param->cols());
+
+            double originalVal = (*param)(randRow, randCol);
+
+            (*param)(randRow, randCol) = originalVal - delta;
+            forward(input);
+            auto output0 = cache[name+"_output"];
+
+            (*param)(randRow, randCol) = originalVal + delta;
+            forward(input);
+            auto output1 = cache[name+"_output"];
+
+            (*param)(randRow, randCol) = originalVal;
+
+            double analyticGrad = diff[paramName](randRow, randCol);
+            double numericalGrad;
+            if (dy.data() == NULL)
+                numericalGrad = (output1 - output0).array().sum()
+                                / (2.0 * delta);
+            else
+                numericalGrad =
+                        ((output1 - output0).array() * dy.array()).sum()
+                        / (2.0 * delta);
+            double rel_error = fabs(analyticGrad - numericalGrad)
+                               / fabs(analyticGrad + numericalGrad);
+
+            if (rel_error > 10e-5)
+                std::cout << "\t"
+                          << numericalGrad << ", "
+                          << analyticGrad << " ==> "
+                          << rel_error << std::endl;
+        }
+    }
+}
+
 
 //
 // MLP implementation
 //
-void mlpInit(const int inputSize,
-             const int hiddenDimension,
-             MLPParameters & mlpParameters
-){
-    mlpParameters.W = initializeVariable(inputSize, hiddenDimension);
-    mlpParameters.b = initializeVariable(hiddenDimension, 1);
+MLP::MLP(int inputSize, int hiddenDim, std::string name) {
+    this->name = name;
+
+    parameters[name + "_W"] = initializeVariable(inputSize, hiddenDim);
+    parameters[name + "_b"] = initializeVariable(hiddenDim, 1);
 }
 
 
-void mlpForward(const Eigen::MatrixXd x,
-                const MLPParameters & mlpParameters,
-                MLPCache & mlpCache
-) {
-    Eigen::MatrixXd W = mlpParameters.W;
-    Eigen::MatrixXd b = mlpParameters.b;
-
-    Eigen::MatrixXd h_inner = (x.transpose() * W).transpose().colwise() + b.col(0);
-
-    Eigen::MatrixXd h = softmax(h_inner);
-
-    mlpCache.x = x;
-    mlpCache.y = h;
+MLP::MLP(int inputSize, int hiddenDim, std::string name,
+         const std::map<std::string, Eigen::MatrixXd*>& parameters):
+        MLP(inputSize, hiddenDim, name){
+    Layer::copyParameters(parameters);
 }
 
+void MLP::forward(const Eigen::MatrixXd & input){
+    auto W = parameters[name + "_W"];
+    auto b = parameters[name + "_b"];
 
-void mlpBackward(const Eigen::MatrixXd & dy,
-                 const MLPParameters & mlpParameters,
-                 const MLPCache & mlpCache,
-                 MLPDiff & mlpDiff){
-    Eigen::MatrixXd W = mlpParameters.W;
+    Eigen::MatrixXd h_inner = (input.transpose() * (*W)).transpose().colwise() + (*b).col(0);
 
-    Eigen::MatrixXd x = mlpCache.x;
-    Eigen::MatrixXd y = mlpCache.y;
+    Eigen::MatrixXd output = softmax(h_inner);
+
+    cache[name + "_input"] = input;
+    cache[name + "_output"] = output;
+    this->output = output;
+}
+
+void MLP::backward(const Eigen::MatrixXd & dy){
+    cache[name+"_dy"] = dy;
+
+    auto W = parameters[name + "_W"];
+
+    auto input = cache[name + "_input"];
+    auto output = cache[name + "_output"];
 
     long sequenceLen = dy.cols();
-    long hiddenDim = W.cols();
-    long inputSize = W.rows();
+    long hiddenDim = W->cols();
+    long inputSize = W->rows();
 
-    std::vector<Eigen::MatrixXd> tmp = dsoftmax(y);
+    std::vector<Eigen::MatrixXd> tmp = dsoftmax(output);
 
     Eigen::MatrixXd dh(hiddenDim, sequenceLen);
 
@@ -59,240 +184,147 @@ void mlpBackward(const Eigen::MatrixXd & dy,
         dh.col(i) = tmp[i].colwise().sum().transpose();
     }
 
-    mlpDiff.W_diff = Eigen::MatrixXd::Zero(inputSize, hiddenDim);
-    mlpDiff.b_diff = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    mlpDiff.x_diff = Eigen::MatrixXd::Zero(inputSize, sequenceLen);
+    diff[name + "_W"] = Eigen::MatrixXd::Zero(inputSize, hiddenDim);
+    diff[name + "_b"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    diff[name + "_input"] = Eigen::MatrixXd::Zero(inputSize, sequenceLen);
+
 
     for (int i = 0; i < sequenceLen; i++) {
-        Eigen::MatrixXd dW = x.col(i) * dh.col(i).transpose();
+        Eigen::MatrixXd dW = input.col(i) * dh.col(i).transpose();
         Eigen::MatrixXd db = dh.col(i);
-        Eigen::MatrixXd dx = W * dh.col(i);
+        Eigen::MatrixXd dx = (*W) * dh.col(i);
 
-        mlpDiff.W_diff += dW;
-        mlpDiff.b_diff += db;
-        mlpDiff.x_diff.col(i) = dx;
+        diff[name + "_W"] += dW;
+        diff[name + "_b"] += db;
+        diff[name + "_input"].col(i) = dx;
     }
+
+    inputDiff = diff[name+"_input"];
 }
 
-
-void paramGradCheck(const Eigen::MatrixXd & dy,
-                    Eigen::MatrixXd & paramToCheck,
-                    const Eigen::MatrixXd & paramGrad,
-                    MLPParameters & mlpParameters,
-                    const MLPCache & mlpCache
-){
-    Eigen::MatrixXd x = mlpCache.x;
-
-    std::cout.precision(15);
-
-    int num_checks = 10;
-    double delta = 10e-5;
-
-    assert(paramToCheck.rows() == paramGrad.rows() || paramToCheck.cols() == paramGrad.cols());
-
-    for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(paramToCheck.rows()));
-        int randCol = 0 + (rand() % (int)(paramToCheck.cols()));
-
-        double originalVal = paramToCheck(randRow, randCol);
-
-        MLPCache gradCheckCache0;
-
-        paramToCheck(randRow, randCol) = originalVal - delta;
-
-        mlpForward(x, mlpParameters, gradCheckCache0);
-
-        MLPCache gradCheckCache1;
-
-        paramToCheck(randRow, randCol) = originalVal + delta;
-
-        mlpForward(x, mlpParameters, gradCheckCache1);
-
-        paramToCheck(randRow, randCol) = originalVal;
-
-        double analyticGrad = paramGrad(randRow, randCol);
-
-        double numericalGrad = ((gradCheckCache1.y - gradCheckCache0.y).array() * dy.array()).sum() / float(2 * delta);
-
-        double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
-
-        if (rel_error > 10e-5)
-            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
-    }
-}
-
-void inputGradCheck(const Eigen::MatrixXd & dy,
-                    const Eigen::MatrixXd & inputGrad,
-                    const MLPParameters & mlpParameters,
-                    const MLPCache & mlpCache
-){
-    Eigen::MatrixXd x = mlpCache.x;
-
-    std::cout.precision(15);
-
-    int num_checks = 10;
-    double delta = 10e-5;
-
-    for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(x.rows()));
-        int randCol = 0 + (rand() % (int)(x.cols()));
-
-        double originalVal = x(randRow, randCol);
-
-        MLPCache gradCheckCache0;
-
-        x(randRow, randCol) = originalVal - delta;
-
-        mlpForward(x, mlpParameters, gradCheckCache0);
-
-        MLPCache gradCheckCache1;
-
-        x(randRow, randCol) = originalVal + delta;
-
-        mlpForward(x, mlpParameters, gradCheckCache1);
-
-        x(randRow, randCol) = originalVal;
-
-        double analyticGrad = inputGrad(randRow, randCol);
-
-        double numericalGrad = ((gradCheckCache1.y - gradCheckCache0.y).array() * dy.array()).sum() / (2 * delta);
-
-        double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
-
-        if (rel_error > 10e-5)
-            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
-    }
-}
-
-
-void mlpGradientCheck(const Eigen::MatrixXd & dy,
-                      MLPParameters & mlpParameters,
-                      const MLPCache & mlpCache,
-                      const MLPDiff & mlpDiff
-){
-    std::cout << "=> gradient checking W" << std::endl;
-    paramGradCheck(dy, mlpParameters.W, mlpDiff.W_diff, mlpParameters, mlpCache);
-    std::cout << "=> gradient checking x" << std::endl;
-    inputGradCheck(dy, mlpDiff.x_diff, mlpParameters, mlpCache);
-}
-
-void mlpParamUpdate(double learningRate, MLPParameters & mlpParameters, MLPDiff & mlpDiff) {
-    gradientClip(mlpDiff.W_diff);
-    mlpParameters.W -= learningRate * mlpDiff.W_diff;
-    gradientClip(mlpDiff.b_diff);
-    mlpParameters.b -= learningRate * mlpDiff.b_diff;
-}
 
 //
 // LSTM implementation
 //
-void lstmInit(const int inputSize,
-              const int hiddenDimension,
-              LSTMParameters & lstmParameters
-){
-    lstmParameters.Wi = initializeVariable(inputSize + hiddenDimension, hiddenDimension);
-    lstmParameters.Wf = initializeVariable(inputSize + hiddenDimension, hiddenDimension);
-    lstmParameters.Wc = initializeVariable(inputSize + hiddenDimension, hiddenDimension);
-    lstmParameters.Wo = initializeVariable(inputSize + hiddenDimension, hiddenDimension);
-    lstmParameters.bi = initializeVariable(hiddenDimension, 1);
-    lstmParameters.bf = initializeVariable(hiddenDimension, 1);
-    lstmParameters.bc = initializeVariable(hiddenDimension, 1);
-    lstmParameters.bo = initializeVariable(hiddenDimension, 1);
+LSTM::LSTM(int inputSize, int hiddenDim, std::string name){
+    this->name = name;
+
+    parameters[name + "_Wi"] = initializeVariable(inputSize + hiddenDim, hiddenDim);
+    parameters[name + "_Wf"] = initializeVariable(inputSize + hiddenDim, hiddenDim);
+    parameters[name + "_Wc"] = initializeVariable(inputSize + hiddenDim, hiddenDim);
+    parameters[name + "_Wo"] = initializeVariable(inputSize + hiddenDim, hiddenDim);
+    parameters[name + "_bi"] = initializeVariable(hiddenDim, 1);
+    parameters[name + "_bf"] = initializeVariable(hiddenDim, 1);
+    parameters[name + "_bc"] = initializeVariable(hiddenDim, 1);
+    parameters[name + "_bo"] = initializeVariable(hiddenDim, 1);
 }
 
+LSTM::LSTM(int inputSize, int hiddenDim, std::string name, bool isBatch):
+        LSTM(inputSize, hiddenDim, name){
+    this->isBatch = isBatch;
+}
 
-void lstmForward(const Eigen::MatrixXd x,
-                 const LSTMParameters & lstmParameters,
-                 LSTMCache & lstmCache
-) {
-    Eigen::MatrixXd Wi = lstmParameters.Wi;
-    Eigen::MatrixXd Wf = lstmParameters.Wf;
-    Eigen::MatrixXd Wc = lstmParameters.Wc;
-    Eigen::MatrixXd Wo = lstmParameters.Wo;
-    Eigen::MatrixXd bi = lstmParameters.bi;
-    Eigen::MatrixXd bf = lstmParameters.bf;
-    Eigen::MatrixXd bc = lstmParameters.bc;
-    Eigen::MatrixXd bo = lstmParameters.bo;
+LSTM::LSTM(int inputSize, int hiddenDim, std::string name,
+           const std::map<std::string, Eigen::MatrixXd*>& parameters):
+        LSTM::LSTM(inputSize, hiddenDim, name){
+     copyParameters(parameters);
+}
 
-    long sequenceLen = x.cols();
-    long hiddenDim = Wi.cols();
-    long inputSize = Wi.rows() - hiddenDim;
+LSTM::LSTM(int inputSize, int hiddenDim, std::string name, bool isBatch,
+           const std::map<std::string, Eigen::MatrixXd*>& parameters):
+        LSTM::LSTM(inputSize, hiddenDim, name, isBatch){
+    copyParameters(parameters);
+}
+
+void LSTM::forward(const Eigen::MatrixXd & input){
+    auto Wi = parameters[name + "_Wi"];
+    auto Wf = parameters[name + "_Wf"];
+    auto Wc = parameters[name + "_Wc"];
+    auto Wo = parameters[name + "_Wo"];
+    auto bi = parameters[name + "_bi"];
+    auto bf = parameters[name + "_bf"];
+    auto bc = parameters[name + "_bc"];
+    auto bo = parameters[name + "_bo"];
+
+    long sequenceLen = input.cols();
+    long hiddenDim = Wi->cols();
+    long inputSize = Wi->rows() - hiddenDim;
 
     Eigen::MatrixXd h_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
     Eigen::MatrixXd c_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
 
-    lstmCache.x = x;
-    lstmCache.h = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
-    lstmCache.c = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
-    lstmCache.hi = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
-    lstmCache.hf = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
-    lstmCache.ho = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
-    lstmCache.hc = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_input"] = input;
+    cache[name + "_h"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_c"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_hi"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_hf"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_ho"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_hc"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_output"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
 
     for(int i=0; i < sequenceLen; i++){
         Eigen::MatrixXd z(hiddenDim + inputSize, 1);
-        z << h_prev, x.col(i);
+        z << h_prev, input.col(i);
 
-        Eigen::MatrixXd hf_ = (z.transpose() * Wf).transpose() + bf;
+        Eigen::MatrixXd hf_ = (z.transpose() * (*Wf)).transpose() + (*bf);
         Eigen::MatrixXd hf = sigmoid(hf_);
-        Eigen::MatrixXd hi_ = (z.transpose() * Wi).transpose() + bi;
+        Eigen::MatrixXd hi_ = (z.transpose() * (*Wi)).transpose() + (*bi);
         Eigen::MatrixXd hi = sigmoid(hi_);
-        Eigen::MatrixXd ho_ = (z.transpose() * Wo).transpose() + bo;
+        Eigen::MatrixXd ho_ = (z.transpose() * (*Wo)).transpose() + (*bo);
         Eigen::MatrixXd ho = sigmoid(ho_);
-        Eigen::MatrixXd hc_ = (z.transpose() * Wc).transpose() + bc;
+        Eigen::MatrixXd hc_ = (z.transpose() * (*Wc)).transpose() + (*bc);
         Eigen::MatrixXd hc = tanh(hc_);
         Eigen::MatrixXd c = hf.array() * c_prev.array() + hi.array() * hc.array();
         Eigen::MatrixXd h = ho.array() * tanh(c).array();
 
-        lstmCache.h.col(i) = h;
-        lstmCache.c.col(i) = c;
-        lstmCache.hi.col(i) = hi;
-        lstmCache.hf.col(i) = hf;
-        lstmCache.ho.col(i) = ho;
-        lstmCache.hc.col(i) = hc;
+        cache[name + "_h"].col(i) = h;
+        cache[name + "_c"].col(i) = c;
+        cache[name + "_hi"].col(i) = hi;
+        cache[name + "_hf"].col(i) = hf;
+        cache[name + "_ho"].col(i) = ho;
+        cache[name + "_hc"].col(i) = hc;
+        cache[name + "_output"].col(i) = h;
 
         h_prev = h;
         c_prev = c;
-
     }
+    this->output = cache[name+"_output"];
 }
 
+void LSTM::backward(const Eigen::MatrixXd & dy) {
+    cache[name+"_dy"] = dy;
 
-void lstmBackward(const Eigen::MatrixXd & dy,
-                  const LSTMParameters & lstmParameters,
-                  const LSTMCache & lstmCache,
-                  LSTMDiff & lstmDiff){
-    Eigen::MatrixXd Wi = lstmParameters.Wi;
-    Eigen::MatrixXd Wf = lstmParameters.Wf;
-    Eigen::MatrixXd Wc = lstmParameters.Wc;
-    Eigen::MatrixXd Wo = lstmParameters.Wo;
+    auto Wi = parameters[name + "_Wi"];
+    auto Wf = parameters[name + "_Wf"];
+    auto Wc = parameters[name + "_Wc"];
+    auto Wo = parameters[name + "_Wo"];
 
     long sequenceLen = dy.cols();
-    long hiddenDim = Wi.cols();
-    long inputSize = Wi.rows() - hiddenDim;
+    long hiddenDim = Wi->cols();
+    long inputSize = Wi->rows() - hiddenDim;
 
     Eigen::MatrixXd dh_next = Eigen::MatrixXd::Zero(hiddenDim, 1);
     Eigen::MatrixXd dc_next = Eigen::MatrixXd::Zero(hiddenDim, 1);
 
     // initialize parameter diff to zero.
-    lstmDiff.Wi_diff = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
-    lstmDiff.Wf_diff = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
-    lstmDiff.Wc_diff = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
-    lstmDiff.Wo_diff = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
-    lstmDiff.bi_diff = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    lstmDiff.bf_diff = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    lstmDiff.bc_diff = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    lstmDiff.bo_diff = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    lstmDiff.x_diff = Eigen::MatrixXd::Zero(inputSize, sequenceLen);
+    diff[name + "_Wi"] = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
+    diff[name + "_Wf"] = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
+    diff[name + "_Wc"] = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
+    diff[name + "_Wo"] = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
+    diff[name + "_bi"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    diff[name + "_bf"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    diff[name + "_bc"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    diff[name + "_bo"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    diff[name + "_input"] = Eigen::MatrixXd::Zero(inputSize, sequenceLen);
 
     for(long t = sequenceLen; t --> 0;) {
-        Eigen::MatrixXd x_t = lstmCache.x.col(t);
-        Eigen::MatrixXd hi_t = lstmCache.hi.col(t);
-        Eigen::MatrixXd hf_t = lstmCache.hf.col(t);
-        Eigen::MatrixXd hc_t = lstmCache.hc.col(t);
-        Eigen::MatrixXd ho_t = lstmCache.ho.col(t);
-        Eigen::MatrixXd h_t = lstmCache.h.col(t);
-        Eigen::MatrixXd c_t = lstmCache.c.col(t);
+        Eigen::MatrixXd x_t = cache[name + "_input"].col(t);
+        Eigen::MatrixXd hi_t = cache[name + "_hi"].col(t);
+        Eigen::MatrixXd hf_t = cache[name + "_hf"].col(t);
+        Eigen::MatrixXd hc_t = cache[name + "_hc"].col(t);
+        Eigen::MatrixXd ho_t = cache[name + "_ho"].col(t);
+        Eigen::MatrixXd h_t = cache[name + "_h"].col(t);
+        Eigen::MatrixXd c_t = cache[name + "_c"].col(t);
         Eigen::MatrixXd dy_t = dy.col(t);
 
         Eigen::MatrixXd c_prev;
@@ -302,8 +334,8 @@ void lstmBackward(const Eigen::MatrixXd & dy,
             h_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
         }
         else {
-            c_prev = lstmCache.c.col(t-1);
-            h_prev = lstmCache.h.col(t-1);
+            c_prev = cache[name + "_c"].col(t-1);
+            h_prev = cache[name + "_h"].col(t-1);
         }
 
         Eigen::MatrixXd z(hiddenDim + inputSize, 1);
@@ -334,538 +366,268 @@ void lstmBackward(const Eigen::MatrixXd & dy,
         Eigen::MatrixXd dWo = z * dho_inner.transpose();
         Eigen::MatrixXd dbo = dho_inner;
 
-        Eigen::MatrixXd dz = Wi * dhi_inner + Wc * dhc_inner + Wo * dho_inner + Wf * dhf_inner;
+        Eigen::MatrixXd dz = (*Wi) * dhi_inner
+                             + (*Wc) * dhc_inner
+                             + (*Wo) * dho_inner
+                             + (*Wf) * dhf_inner;
         Eigen::MatrixXd dx = dz.block(hiddenDim, 0, inputSize, 1);
 
         // update dh_next and dc_next
         dh_next = dz.block(0, 0, hiddenDim, 1);
         dc_next = hf_t.array() * dc.array();
 
-        lstmDiff.Wi_diff += dWi;
-        lstmDiff.Wf_diff += dWf;
-        lstmDiff.Wc_diff += dWc;
-        lstmDiff.Wo_diff += dWo;
-        lstmDiff.bi_diff += dbi;
-        lstmDiff.bf_diff += dbf;
-        lstmDiff.bc_diff += dbc;
-        lstmDiff.bo_diff += dbo;
-        lstmDiff.x_diff.col(t) += dx;
+        diff[name + "_Wi"] += dWi;
+        diff[name + "_Wf"] += dWf;
+        diff[name + "_Wc"] += dWc;
+        diff[name + "_Wo"] += dWo;
+        diff[name + "_bi"] += dbi;
+        diff[name + "_bf"] += dbf;
+        diff[name + "_bc"] += dbc;
+        diff[name + "_bo"] += dbo;
+        diff[name + "_input"].col(t) += dx;
     }
-}
-
-
-void paramGradCheck(const Eigen::MatrixXd & dy,
-                    Eigen::MatrixXd & paramToCheck,
-                    const Eigen::MatrixXd & paramGrad,
-                    LSTMParameters & lstmParameters,
-                    const LSTMCache & lstmCache
-){
-    Eigen::MatrixXd x = lstmCache.x;
-    std::cout.precision(15);
-
-    int num_checks = 10;
-    float delta = 10e-5;
-
-    assert(paramToCheck.rows() == paramGrad.rows() || paramToCheck.cols() == paramGrad.cols());
-
-    for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(paramToCheck.rows()));
-        int randCol = 0 + (rand() % (int)(paramToCheck.cols()));
-
-        float originalVal = paramToCheck(randRow, randCol);
-
-        LSTMCache gradCheckCache0;
-
-        paramToCheck(randRow, randCol) = originalVal - delta;
-
-        lstmForward(x, lstmParameters, gradCheckCache0);
-
-        LSTMCache gradCheckCache1;
-
-        paramToCheck(randRow, randCol) = originalVal + delta;
-
-        lstmForward(x, lstmParameters, gradCheckCache1);
-
-        paramToCheck(randRow, randCol) = originalVal;
-
-        float analyticGrad = paramGrad(randRow, randCol);
-
-        float numericalGrad = ((gradCheckCache1.h - gradCheckCache0.h).array() * dy.array()).sum() / (2 * delta);
-
-        double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
-
-        if (rel_error > 10e-5)
-            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
-    }
-}
-
-void inputGradCheck(const Eigen::MatrixXd & dy,
-                    const Eigen::MatrixXd & inputGrad,
-                    const LSTMParameters & lstmParameters,
-                    const LSTMCache & lstmCache
-){
-    Eigen::MatrixXd x = lstmCache.x;
-    std::cout.precision(15);
-
-    int num_checks = 10;
-    float delta = 10e-5;
-
-    for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(x.rows()));
-        int randCol = 0 + (rand() % (int)(x.cols()));
-
-        float originalVal = x(randRow, randCol);
-
-        LSTMCache gradCheckCache0;
-
-        x(randRow, randCol) = originalVal - delta;
-
-        lstmForward(x, lstmParameters, gradCheckCache0);
-
-        LSTMCache gradCheckCache1;
-
-        x(randRow, randCol) = originalVal + delta;
-
-        lstmForward(x, lstmParameters, gradCheckCache1);
-
-        x(randRow, randCol) = originalVal;
-
-        float analyticGrad = inputGrad(randRow, randCol);
-
-        float numericalGrad = ((gradCheckCache1.h - gradCheckCache0.h).array() * dy.array()).sum() / (2 * delta);
-
-        double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
-
-        if (rel_error > 10e-5)
-            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
-    }
-}
-
-
-void lstmGradientCheck(const Eigen::MatrixXd & dy,
-                       LSTMParameters & lstmParameters,
-                       const LSTMCache & lstmCache,
-                       const LSTMDiff & lstmDiff
-){
-    std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(dy, lstmParameters.Wi, lstmDiff.Wi_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(dy, lstmParameters.Wf, lstmDiff.Wf_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(dy, lstmParameters.Wc, lstmDiff.Wc_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(dy, lstmParameters.Wo, lstmDiff.Wo_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(dy, lstmParameters.bi, lstmDiff.bi_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(dy, lstmParameters.bf, lstmDiff.bf_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(dy, lstmParameters.bc, lstmDiff.bc_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(dy, lstmParameters.bo, lstmDiff.bo_diff, lstmParameters, lstmCache);
-    std::cout << "=> gradient checking x" << std::endl;
-    inputGradCheck(dy, lstmDiff.x_diff, lstmParameters, lstmCache);
-}
-
-void lstmParamUpdate(const double learningRate,
-                     LSTMParameters & lstmParameters,
-                     LSTMDiff & lstmDiff) {
-    gradientClip(lstmDiff.Wi_diff);
-    lstmParameters.Wi -= learningRate * lstmDiff.Wi_diff;
-    gradientClip(lstmDiff.Wf_diff);
-    lstmParameters.Wf -= learningRate * lstmDiff.Wf_diff;
-    gradientClip(lstmDiff.Wc_diff);
-    lstmParameters.Wc -= learningRate * lstmDiff.Wc_diff;
-    gradientClip(lstmDiff.Wo_diff);
-    lstmParameters.Wo -= learningRate * lstmDiff.Wo_diff;
-    gradientClip(lstmDiff.bi_diff);
-    lstmParameters.bi -= learningRate * lstmDiff.bi_diff;
-    gradientClip(lstmDiff.bf_diff);
-    lstmParameters.bf -= learningRate * lstmDiff.bf_diff;
-    gradientClip(lstmDiff.bc_diff);
-    lstmParameters.bc -= learningRate * lstmDiff.bc_diff;
-    gradientClip(lstmDiff.bo_diff);
-    lstmParameters.bo -= learningRate * lstmDiff.bo_diff;
+    this->inputDiff = diff[name+"_input"];
 }
 
 //
 // Bi-LSTM implementation
 //
+BiLSTM::BiLSTM(int inputSize, int hiddenDim, std::string name){
+    this->name = name;
+    fwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_fwdLSTM");
+    bwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_bwdLSTM");
 
-void biLSTMInit(const int inputSize,
-                const int hiddenDimension,
-                BiLSTMParameters & biLSTMParameters){
-    LSTMParameters fwdLSTMParameters;
-    LSTMParameters bwdLSTMParameters;
-    lstmInit(inputSize, hiddenDimension, fwdLSTMParameters);
-    lstmInit(inputSize, hiddenDimension, bwdLSTMParameters);
-    biLSTMParameters.fwdLSTMParameters = fwdLSTMParameters;
-    biLSTMParameters.bwdLSTMParameters = bwdLSTMParameters;
+    for ( const auto& p: fwdLSTM->parameters ){
+        parameters[p.first] = p.second;
+    }
+    parameters.insert(fwdLSTM->parameters.begin(),
+                      fwdLSTM->parameters.end());
+    parameters.insert(bwdLSTM->parameters.begin(),
+                      bwdLSTM->parameters.end());}
+
+BiLSTM::BiLSTM(int inputSize, int hiddenDim, std::string name, bool isBatch){
+    this->name = name;
+    fwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_fwdLSTM", isBatch);
+    bwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_bwdLSTM", isBatch);
+
+    parameters.insert(fwdLSTM->parameters.begin(),
+                      fwdLSTM->parameters.end());
+    parameters.insert(bwdLSTM->parameters.begin(),
+                      bwdLSTM->parameters.end());}
+
+BiLSTM::BiLSTM(int inputSize, int hiddenDim, std::string name,
+               const std::map<std::string, Eigen::MatrixXd*>& parameters){
+    this->name = name;
+    fwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_fwdLSTM", parameters);
+    bwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_bwdLSTM", parameters);
+
+    for ( const auto& p: fwdLSTM->parameters ){
+        this->parameters[p.first] = p.second;
+    }
+    this->parameters.insert(fwdLSTM->parameters.begin(),
+                            fwdLSTM->parameters.end());
+    this->parameters.insert(bwdLSTM->parameters.begin(),
+                            bwdLSTM->parameters.end());
+}
+
+BiLSTM::BiLSTM(int inputSize, int hiddenDim, std::string name, bool isBatch,
+               const std::map<std::string, Eigen::MatrixXd*>& parameters){
+    this->name = name;
+    fwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_fwdLSTM",
+                       isBatch, parameters);
+    bwdLSTM = new LSTM(inputSize, hiddenDim, this->name + "_bwdLSTM",
+                       isBatch, parameters);
+
+    this->parameters.insert(fwdLSTM->parameters.begin(),
+                            fwdLSTM->parameters.end());
+    this->parameters.insert(bwdLSTM->parameters.begin(),
+                            bwdLSTM->parameters.end());
 }
 
 
-void biLSTMForward(const Eigen::MatrixXd x,
-                   const BiLSTMParameters & biLSTMParameters,
-                   BiLSTMCache & biLSTMCache){
-    long sequenceLen = x.cols();
-    long hiddenDim = biLSTMParameters.fwdLSTMParameters.Wi.cols();
-    long inputSize = biLSTMParameters.fwdLSTMParameters.Wi.rows() - hiddenDim;
+void BiLSTM::forward(const Eigen::MatrixXd & input) {
+    fwdLSTM->forward(input);
+    bwdLSTM->forward(input.rowwise().reverse());
 
-    // bi-directional word lstm forward
-    lstmForward(
-            x,
-            biLSTMParameters.fwdLSTMParameters,
-            biLSTMCache.fwdLSTMCache
-    );
-    lstmForward(
-            x.rowwise().reverse(),  // backward lstm by reversing input
-            biLSTMParameters.bwdLSTMParameters,
-            biLSTMCache.bwdLSTMCache
-    );
+    long hiddenDim = parameters[name+"_fwdLSTM_bi"]->rows();
+    long sequenceLen = input.cols();
+    Eigen::MatrixXd output(hiddenDim * 2, sequenceLen);
 
-    biLSTMCache.h = Eigen::MatrixXd(biLSTMCache.fwdLSTMCache.h.rows() * 2, biLSTMCache.fwdLSTMCache.h.cols());
+    output << fwdLSTM->cache[name+"_fwdLSTM_output"],
+            bwdLSTM->cache[name+"_bwdLSTM_output"].rowwise().reverse();
 
-    biLSTMCache.h << biLSTMCache.fwdLSTMCache.h, biLSTMCache.bwdLSTMCache.h.rowwise().reverse();
+    cache[name+"_output"] = output;
+    cache[name+"_input"] = input;
+
+    this->output = cache[name+"_output"];
 
 }
 
+void BiLSTM::backward(const Eigen::MatrixXd & dy) {
+    cache[name+"_dy"] = dy;
 
-void biLSTMBackward(const Eigen::MatrixXd & dy,
-                    const BiLSTMParameters & biLSTMParameters,
-                    const BiLSTMCache & biLSTMCache,
-                    BiLSTMDiff & biLSTMDiff){
     Eigen::MatrixXd fwdDy = dy.topRows(dy.rows()/2);
-    lstmBackward(
-            fwdDy,
-            biLSTMParameters.fwdLSTMParameters,
-            biLSTMCache.fwdLSTMCache,
-            biLSTMDiff.fwdLSTMDiff
-    );
+    fwdLSTM->backward(fwdDy);
 
     Eigen::MatrixXd bwdDy = dy.bottomRows(dy.rows()/2).rowwise().reverse();
-    lstmBackward(
-            bwdDy,
-            biLSTMParameters.bwdLSTMParameters,
-            biLSTMCache.bwdLSTMCache,
-            biLSTMDiff.bwdLSTMDiff
-    );
-    biLSTMDiff.x_diff = biLSTMDiff.fwdLSTMDiff.x_diff + biLSTMDiff.bwdLSTMDiff.x_diff.rowwise().reverse();
-}
+    bwdLSTM->backward(bwdDy);
 
+    diff.clear();
+    diff.insert(fwdLSTM->diff.begin(), fwdLSTM->diff.end());
+    diff.insert(bwdLSTM->diff.begin(), bwdLSTM->diff.end());
 
-void paramGradCheck(const Eigen::MatrixXd & dy,
-                    Eigen::MatrixXd & paramToCheck,
-                    const Eigen::MatrixXd & paramGrad,
-                    BiLSTMParameters & biLSTMParameters,
-                    const BiLSTMCache & biLSTMCache
-){
-    Eigen::MatrixXd x = biLSTMCache.fwdLSTMCache.x;
-    std::cout.precision(15);
+    diff[name+"_input"] = fwdLSTM->diff[name+"_fwdLSTM_input"] +
+                          bwdLSTM->diff[name+"_bwdLSTM_input"].rowwise().reverse();
 
-    int num_checks = 10;
-    float delta = 10e-5;
-
-    assert(paramToCheck.rows() == paramGrad.rows() || paramToCheck.cols() == paramGrad.cols());
-
-    for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(paramToCheck.rows()));
-        int randCol = 0 + (rand() % (int)(paramToCheck.cols()));
-
-        float originalVal = paramToCheck(randRow, randCol);
-
-        BiLSTMCache gradCheckCache0;
-
-        paramToCheck(randRow, randCol) = originalVal - delta;
-
-        biLSTMForward(x, biLSTMParameters, gradCheckCache0);
-
-        BiLSTMCache gradCheckCache1;
-
-        paramToCheck(randRow, randCol) = originalVal + delta;
-
-        biLSTMForward(x, biLSTMParameters, gradCheckCache1);
-
-        paramToCheck(randRow, randCol) = originalVal;
-
-        float analyticGrad = paramGrad(randRow, randCol);
-
-        float numericalGrad = ((gradCheckCache1.h - gradCheckCache0.h).array() * dy.array()).sum() / (2 * delta);
-
-        double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
-
-        if (rel_error > 10e-5)
-            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
-    }
-}
-
-
-void inputGradCheck(const Eigen::MatrixXd & dy,
-                    const Eigen::MatrixXd & inputGrad,
-                    const BiLSTMParameters & biLSTMParameters,
-                    const BiLSTMCache & biLSTMCache){
-    Eigen::MatrixXd x = biLSTMCache.fwdLSTMCache.x;
-    std::cout.precision(15);
-
-    int num_checks = 10;
-    float delta = 10e-5;
-
-    for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(x.rows()));
-        int randCol = 0 + (rand() % (int)(x.cols()));
-
-        float originalVal = x(randRow, randCol);
-
-        BiLSTMCache gradCheckCache0;
-
-        x(randRow, randCol) = originalVal - delta;
-
-        biLSTMForward(x, biLSTMParameters, gradCheckCache0);
-
-        BiLSTMCache gradCheckCache1;
-
-        x(randRow, randCol) = originalVal + delta;
-
-        biLSTMForward(x, biLSTMParameters, gradCheckCache1);
-
-        x(randRow, randCol) = originalVal;
-
-        float analyticGrad = inputGrad(randRow, randCol);
-
-        float numericalGrad = ((gradCheckCache1.h - gradCheckCache0.h).array() * dy.array()).sum() / (2 * delta);
-
-        double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
-
-        if (rel_error > 10e-5)
-            std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
-    }
-}
-
-
-void biLSTMGradientCheck(const Eigen::MatrixXd & dy,
-                         BiLSTMParameters & biLSTMParameters,
-                         const BiLSTMCache & biLSTMCache,
-                         const BiLSTMDiff & biLSTMDiff) {
-    std::cout << "####### checking biLSTMDiff.fwdLSTMDiff ########" << std::endl;
-    std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.Wi, biLSTMDiff.fwdLSTMDiff.Wi_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.Wf, biLSTMDiff.fwdLSTMDiff.Wf_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.Wc, biLSTMDiff.fwdLSTMDiff.Wc_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.Wo, biLSTMDiff.fwdLSTMDiff.Wo_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.bi, biLSTMDiff.fwdLSTMDiff.bi_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.bf, biLSTMDiff.fwdLSTMDiff.bf_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.bc, biLSTMDiff.fwdLSTMDiff.bc_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.fwdLSTMParameters.bo, biLSTMDiff.fwdLSTMDiff.bo_diff, biLSTMParameters, biLSTMCache);
-
-    std::cout << "####### checking biLSTMDiff.bwdLSTMDiff ########" << std::endl;
-    std::cout << "=> gradient checking Wi" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.Wi, biLSTMDiff.bwdLSTMDiff.Wi_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking Wf" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.Wf, biLSTMDiff.bwdLSTMDiff.Wf_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking Wc" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.Wc, biLSTMDiff.bwdLSTMDiff.Wc_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking Wo" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.Wo, biLSTMDiff.bwdLSTMDiff.Wo_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bi" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.bi, biLSTMDiff.bwdLSTMDiff.bi_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bf" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.bf, biLSTMDiff.bwdLSTMDiff.bf_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bc" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.bc, biLSTMDiff.bwdLSTMDiff.bc_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking bo" << std::endl;
-    paramGradCheck(dy, biLSTMParameters.bwdLSTMParameters.bo, biLSTMDiff.bwdLSTMDiff.bo_diff, biLSTMParameters, biLSTMCache);
-    std::cout << "=> gradient checking x" << std::endl;
-
-    std::cout << "=> gradient checking wordEmb" << std::endl;
-    inputGradCheck(dy, biLSTMDiff.x_diff, biLSTMParameters, biLSTMCache);
-}
-
-void biLSTMParamUpdate(const double learningRate, BiLSTMParameters & biLSTMParameters, BiLSTMDiff & biLSTMDiff) {
-    lstmParamUpdate(learningRate, biLSTMParameters.fwdLSTMParameters, biLSTMDiff.fwdLSTMDiff);
-    lstmParamUpdate(learningRate, biLSTMParameters.bwdLSTMParameters, biLSTMDiff.bwdLSTMDiff);
+    this->inputDiff = diff[name+"_input"];
 }
 
 
 //
 // Dropout implementation
 //
-void dropoutForward(const Eigen::MatrixXd & x,
-                    const double dropoutRate,
-                    DropoutCache & dropoutCache
-) {
+Dropout::Dropout(float dropoutRate, std::string name) {
+    this->dropoutRate = dropoutRate;
+    this->name = name;
+}
+
+void Dropout::forward(const Eigen::MatrixXd & input) {
     Eigen::MatrixXd mask;
     if (dropoutRate >= 0) {
         // generate dropout mask
-        int xSize = x.size();
+        int xSize = input.size();
         std::vector<double> v0(int(xSize * dropoutRate), 0);
         std::vector<double> v1(xSize - v0.size(), 1);
         v0.insert(v0.end(), v1.begin(), v1.end());
         std::random_shuffle(v0.begin(), v0.end());
         double *v_array = &v0[0];
-        mask = Eigen::Map<Eigen::MatrixXd>(v_array, x.rows(), x.cols());
+        mask = Eigen::Map<Eigen::MatrixXd>(v_array, input.rows(), input.cols());
     } else {
-        mask = dropoutCache.mask;
+        mask = cache[name+"_mask"];
     }
 
     // mask on x
-    Eigen::MatrixXd y = x.array() * mask.array();
+    Eigen::MatrixXd y = input.array() * mask.array();
 
-    dropoutCache.x = x;
-    dropoutCache.y = y;
-    dropoutCache.mask = mask;
+    cache[name+"_input"] = input;
+    cache[name+"_output"] = y;
+    cache[name+"_mask"] = mask;
+
+    this->output = cache[name+"_output"];
 }
 
+void Dropout::backward(const Eigen::MatrixXd & dy) {
+    cache[name+"_dy"] = dy;
 
-void dropoutBackward(const Eigen::MatrixXd & dy,
-                     const DropoutCache & dropoutCache,
-                     DropoutDiff & dropoutDiff
-){
-    dropoutDiff.x_diff = dy.array() * dropoutCache.mask.array();
+    diff[name+"_input"] = dy.array() * cache[name+"_mask"].array();
+
+    this->inputDiff = diff[name+"_input"];
 }
 
+void Dropout::gradientCheck() {
+    auto input = cache[name+"_input"];
+    auto dy = cache[name+"_dy"];
 
-void dropoutInputUpdate(double learningRate,
-                        const Sequence & s,
-                        Eigen::MatrixXd & wordEmbedding,
-                        DropoutDiff & dropoutDiff) {
-    gradientClip(dropoutDiff.x_diff);
-    int wordEmbDim = wordEmbedding.rows();
-    for (int i = 0; i < s.seqLen; ++i) {
-        Eigen::MatrixXd dWord = dropoutDiff.x_diff.col(i).topRows(wordEmbDim);
-        wordEmbedding.col(s.wordIndex[i]) -= learningRate * dWord;
-    }
-}
-
-void inputGradCheck(const Eigen::MatrixXd & dy,
-                    const DropoutCache & dropoutCache,
-                    const Eigen::MatrixXd & inputGrad
-){
-    Eigen::MatrixXd x = dropoutCache.x;
-
-    std::cout.precision(15);
+    std::cout << "=> " + name + " gradient checking..." << std::endl;
 
     int num_checks = 10;
     double delta = 10e-5;
 
+    std::string paramName = name+"_input";
+    auto& param = input;
+
+    double originalDropoutRate = dropoutRate;
+    dropoutRate = -1;
     for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(x.rows()));
-        int randCol = 0 + (rand() % (int)(x.cols()));
+        int randRow = 0 + (rand() % (int)(param.rows()));
+        int randCol = 0 + (rand() % (int)(param.cols()));
 
-        double originalVal = x(randRow, randCol);
+        double originalVal = param(randRow, randCol);
 
-        DropoutCache gradCheckCache0;
-        gradCheckCache0.mask = dropoutCache.mask;
+        param(randRow, randCol) = originalVal - delta;
+        forward(input);
+        auto output0 = cache[name+"_output"];
 
-        x(randRow, randCol) = originalVal - delta;
+        param(randRow, randCol) = originalVal + delta;
+        forward(input);
+        auto output1 = cache[name+"_output"];
 
-        dropoutForward(x, -1, gradCheckCache0);
+        param(randRow, randCol) = originalVal;
 
-        DropoutCache gradCheckCache1;
-        gradCheckCache1.mask = dropoutCache.mask;
-
-        x(randRow, randCol) = originalVal + delta;
-
-        dropoutForward(x, -1, gradCheckCache1);
-
-        x(randRow, randCol) = originalVal;
-
-        double analyticGrad = inputGrad(randRow, randCol);
-
-        double numericalGrad = ((gradCheckCache1.y - gradCheckCache0.y).array() * dy.array()).sum() / (2 * delta);
-
+        double analyticGrad = diff[paramName](randRow, randCol);
+        double numericalGrad =
+                ((output1 - output0).array() * dy.array()).sum()
+                / (2.0 * delta);
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
         if (rel_error > 10e-5)
             std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
-}
-
-
-void dropoutGradientCheck(const Eigen::MatrixXd & dy,
-                          const DropoutCache & dropoutCache,
-                          const DropoutDiff & dropoutDiff
-){
-    std::cout << "=> gradient checking x" << std::endl;
-    inputGradCheck(dy, dropoutCache, dropoutDiff.x_diff);
+    dropoutRate = originalDropoutRate;
 }
 
 //
 // Crossentropy loss implementation
 //
-void crossEntropyForward(const Eigen::MatrixXd & pred,
-                         const Eigen::MatrixXd & ref,
-                         CrossEntropyCache & crossEntropyCache
-){
-    Eigen::MatrixXd loss = - ref.array() * pred.array().log();
-
-    crossEntropyCache.pred = pred;
-    crossEntropyCache.ref = ref;
-    crossEntropyCache.loss = loss;
+CrossEntropyLoss::CrossEntropyLoss (std::string name) {
+    this->name = name;
 }
 
+void CrossEntropyLoss::forward(const Eigen::MatrixXd & pred,
+                               const Eigen::MatrixXd & ref) {
+    Eigen::MatrixXd loss = - ref.array() * pred.array().log();
 
-void crossEntropyBackward(const CrossEntropyCache & crossEntropyCache,
-                          CrossEntropyDiff & crossEntropyDiff
-){
-    Eigen::MatrixXd pred = crossEntropyCache.pred;
-    Eigen::MatrixXd ref = crossEntropyCache.ref;
+    cache[name+"_pred"] = pred;
+    cache[name+"_ref"] = ref;
+    cache[name+"_output"] = loss;
+
+    this->output = cache[name+"_output"];
+}
+
+void CrossEntropyLoss::backward() {
+    Eigen::MatrixXd pred = cache[name+"_pred"];
+    Eigen::MatrixXd ref = cache[name+"_ref"];
 
     Eigen::MatrixXd dpred = - ref.array() / pred.array();
 
-    crossEntropyDiff.pred_diff = dpred;
-}
+    diff[name+"_input"] = dpred;
 
-void inputGradientCheck(const CrossEntropyCache & crossEntropyCache,
-                        const Eigen::MatrixXd & inputGrad){
-    Eigen::MatrixXd pred = crossEntropyCache.pred;
-    Eigen::MatrixXd ref = crossEntropyCache.ref;
+    this->inputDiff = diff[name+"_input"];
+};
 
-    std::cout.precision(15);
+void CrossEntropyLoss::gradientCheck() {
+    auto& pred = cache[name+"_pred"];
+    auto& ref = cache[name+"_ref"];
+
+    std::cout << "=> " + name + " gradient checking..." << std::endl;
 
     int num_checks = 10;
     double delta = 10e-5;
 
+    std::string paramName = name+"_input";
+    auto& param = pred;
+
     for (int i = 0; i < num_checks; ++i) {
-        int randRow = 0 + (rand() % (int)(pred.rows()));
-        int randCol = 0 + (rand() % (int)(pred.cols()));
+        int randRow = 0 + (rand() % (int)(param.rows()));
+        int randCol = 0 + (rand() % (int)(param.cols()));
 
-        double originalVal = pred(randRow, randCol);
+        double originalVal = param(randRow, randCol);
 
-        CrossEntropyCache gradCheckCache0;
+        param(randRow, randCol) = originalVal - delta;
+        forward(pred, ref);
+        auto output0 = cache[name+"_output"];
 
-        pred(randRow, randCol) = originalVal - delta;
+        param(randRow, randCol) = originalVal + delta;
+        forward(pred, ref);
+        auto output1 = cache[name+"_output"];
 
-        crossEntropyForward(pred, ref, gradCheckCache0);
+        param(randRow, randCol) = originalVal;
 
-        CrossEntropyCache gradCheckCache1;
-
-        pred(randRow, randCol) = originalVal + delta;
-
-        crossEntropyForward(pred, ref, gradCheckCache1);
-
-        pred(randRow, randCol) = originalVal;
-
-        double analyticGrad = inputGrad(randRow, randCol);
-
-        double numericalGrad = (gradCheckCache1.loss - gradCheckCache0.loss).sum() / (2 * delta);
-
+        double analyticGrad = diff[paramName](randRow, randCol);
+        double numericalGrad = (output1 - output0).sum() / (2.0 * delta);
         double rel_error = fabs(analyticGrad - numericalGrad) / fabs(analyticGrad + numericalGrad);
 
         if (rel_error > 10e-5)
             std::cout << "\t" << numericalGrad << ", " << analyticGrad << " ==> " << rel_error << std::endl;
     }
-
-}
-
-void crossEntropyGradientCheck(const CrossEntropyCache & crossEntropyCache,
-                               const CrossEntropyDiff & crossEntropyDiff
-){
-    std::cout << "=> gradient checking pred" << std::endl;
-    inputGradientCheck(crossEntropyCache, crossEntropyDiff.pred_diff);
 }

@@ -7,28 +7,21 @@
 #include <iostream>
 #include <unsupported/Eigen/MatrixFunctions>
 
-double matrix_sum(Eigen::MatrixXd x){
-    double s = 0;
-    for (int i = 0; i < x.cols(); ++i)
-        for (int j = 0; j < x.rows(); ++j)
-            s += x(j, i);
-    return s;
-}
 
-Eigen::MatrixXd sigmoid(Eigen::MatrixXd& x){
+Eigen::MatrixXd sigmoid(const Eigen::MatrixXd & x){
     Eigen::MatrixXd result = 1 / (1 + exp((- x).array()));
 
     return result;
 }
 
-Eigen::MatrixXd tanh(Eigen::MatrixXd& x){
+Eigen::MatrixXd tanh(const Eigen::MatrixXd & x){
     Eigen::MatrixXd tmp = 2 * x;
     Eigen::MatrixXd result = (2 * sigmoid(tmp)).array() - 1;
 
     return result;
 }
 
-Eigen::MatrixXd softmax(Eigen::MatrixXd & x){
+Eigen::MatrixXd softmax(const Eigen::MatrixXd & x){
     Eigen::MatrixXd result = x;
 
     for (int i = 0; i < x.cols(); i++)
@@ -45,7 +38,7 @@ Eigen::MatrixXd softmax(Eigen::MatrixXd & x){
 }
 
 
-std::vector<Eigen::MatrixXd> dsoftmax(Eigen::MatrixXd& softmaxX){
+std::vector<Eigen::MatrixXd> dsoftmax(const Eigen::MatrixXd & softmaxX){
     std::vector<Eigen::MatrixXd> result;
     for (int i = 0; i < softmaxX.cols(); i++) {
         std::cout.precision(20);
@@ -63,30 +56,30 @@ std::vector<Eigen::MatrixXd> dsoftmax(Eigen::MatrixXd& softmaxX){
 }
 
 
-Eigen::MatrixXd dsigmoid(Eigen::MatrixXd& sigmoidX){
+Eigen::MatrixXd dsigmoid(const Eigen::MatrixXd & sigmoidX){
     Eigen::MatrixXd result = sigmoidX.array() * (1 - sigmoidX.array());
 
     return result;
 }
 
-Eigen::MatrixXd dtanh(Eigen::MatrixXd& tanhX){
+Eigen::MatrixXd dtanh(const Eigen::MatrixXd & tanhX){
     Eigen::MatrixXd result = 1 - tanhX.array() * tanhX.array();
 
     return result;
 }
 
 
-Eigen::MatrixXd initializeVariable(int row, int column){
+Eigen::MatrixXd * initializeVariable(int row, int column){
     std::random_device rd;  //Will be used to obtain a seed for the random number engine
     std::mt19937 gen(rd()); //Standard mersenne_twister_engine seeded with rd()
     std::uniform_real_distribution<double> distribution(-1, 1);
 
     double drange = sqrt(6.0 / (row + column));
+    Eigen::MatrixXd* m = new Eigen::MatrixXd(row, column);
 
-    Eigen::MatrixXd m(row, column);
     for (int i=0; i < row; i++){
         for (int j=0; j < column; j++){
-            m(i, j) = distribution(gen) * drange;
+            (*m)(i, j) = distribution(gen) * drange;
         }
     }
     return m;
