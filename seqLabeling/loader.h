@@ -28,7 +28,7 @@ struct Sequence {
 
 void loadPreEmbedding(std::string & filePath, std::map<std::string, Eigen::MatrixXd> & preEmbedding);
 
-void loadRawData(std::string & filePath, RAWDATA & rawData);
+void loadRawData(std::string & filePath, RAWDATA & rawData, bool isTrain);
 
 void set2map(const std::set<std::string> & s,
              std::map<int, std::string> & id2t,

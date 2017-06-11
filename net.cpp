@@ -4,8 +4,6 @@
 #include "net.h"
 #include "utils.h"
 
-#define MAXBUFSIZE  ((int) 1e10)
-
 
 void Net::gradientCheck(Sequence & input){
     std::cout << "=> Network gradient checking..." << std::endl;
@@ -89,6 +87,7 @@ void Net::loadNet(std::string modelDir,
     std::vector<std::string> lineValues;
 
     // load configuration from file
+    std::cout << "loading net configuration...";
     std::ifstream ifsConfig(modelDir + "/configuration.mdl");
     while (std::getline(ifsConfig, line)) {
         std::stringstream lineStream(line);
@@ -99,8 +98,11 @@ void Net::loadNet(std::string modelDir,
         configuration[lineValues[0]] = lineValues[1];
         lineValues.clear();
     }
+    std::cout << "Done" << std::endl;
 
     // load parameters from file
+    std::cout << "loading net parameters...";
+
     std::ifstream ifsParameters(modelDir + "/parameters.mdl");
     while (std::getline(ifsParameters, line)) {
         std::stringstream lineStream(line);
@@ -126,8 +128,11 @@ void Net::loadNet(std::string modelDir,
 
         lineValues.clear();
     }
+    std::cout << "Done" << std::endl;
 
     // load mapping from file
+    std::cout << "loading net mapping...";
+
     std::ifstream ifsWord2Id(modelDir + "/word2id.mdl");
     while (std::getline(ifsWord2Id, line)) {
         std::stringstream lineStream(line);
@@ -193,14 +198,19 @@ void Net::loadNet(std::string modelDir,
         id2label[std::stoi(lineValues[0])] = lineValues[1];
         lineValues.clear();
     }
+    std::cout << "Done" << std::endl;
 
-    // write word embeddings to file
+    // load word embeddings from file
+    std::cout << "loading word embeddings...";
     std::string wordEmbedingFile = modelDir + "/wordEmbedding.mdl";
     wordEmbedding = readMatrix(wordEmbedingFile.c_str());
+    std::cout << "Done" << std::endl;
 
-    // write char embeddings to file
+    // load char embeddings from file
+    std::cout << "loading char embeddings...";
     std::string charEmbedingFile = modelDir + "/charEmbedding.mdl";
     charEmbedding = readMatrix(charEmbedingFile.c_str());
+    std::cout << "Done" << std::endl;
 }
 
 
@@ -233,7 +243,7 @@ void Net::saveNet(const std::map<std::string, std::string>& configuration,
                       << param.cols()
                       << "|";
         for (int i = 0; i < param.rows() * param.cols(); ++i)
-            ofsParameters << std::defaultfloat << param.data()[i] << " ";
+            ofsParameters << param.data()[i] << " ";
         ofsParameters << std::endl;
     }
     ofsParameters.close();
@@ -277,19 +287,20 @@ void Net::saveNet(const std::map<std::string, std::string>& configuration,
 
     // write word embeddings to file
     std::ofstream ofsWordEmb(modelDir + "/wordEmbedding.mdl");
-    ofsWordEmb << std::defaultfloat << wordEmbedding << std::endl;
+    ofsWordEmb << wordEmbedding << std::endl;
     ofsWordEmb.close();
 
     // write char embeddings to file
     std::ofstream ofsCharEmb(modelDir + "/charEmbedding.mdl");
-    ofsCharEmb << std::defaultfloat << charEmbedding << std::endl;
+    ofsCharEmb << charEmbedding << std::endl;
     ofsCharEmb.close();
 }
 
 Eigen::MatrixXd readMatrix(const char *filename)
 {
     int cols = 0, rows = 0;
-    static double buff[MAXBUFSIZE];
+//    static double buff[MAXBUFSIZE];
+    std::vector<double> buff;
 
     // Read numbers from file into buffer.
     std::ifstream infile;
@@ -304,8 +315,8 @@ Eigen::MatrixXd readMatrix(const char *filename)
         while(! stream.eof()){
             double a;
             stream >> a;
-            buff[cols*rows+temp_cols++] = a;
-
+            buff.push_back(a);
+            temp_cols++;
         }
 
 
@@ -327,6 +338,8 @@ Eigen::MatrixXd readMatrix(const char *filename)
     for (int i = 0; i < rows; i++)
         for (int j = 0; j < cols; j++)
             result(i,j) = buff[ cols*i+j ];
+
+    buff.clear();
 
     return result;
 };

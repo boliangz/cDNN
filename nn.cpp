@@ -3,7 +3,7 @@
 //
 #include "nn.h"
 #include "utils.h"
-#include "loader.h"
+#include "seqLabeling/loader.h"
 #include <vector>
 #include <random>
 #include <Eigen/Core>

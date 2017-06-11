@@ -1,9 +1,15 @@
 #include "charBiLSTMNet.h"
-#include "utils.h"
+#include "../utils.h"
 #include "loader.h"
 #include <iostream>
 #include <numeric>
 #include <Eigen/Core>
+#include <cstdlib>
+#include <pthread.h>
+#include <unistd.h>
+
+std::string conllScorer = "/nas/data/m1/zhangb8/DNN/cdnn/conlleval";
+//std::string conllScorer = "/Users/boliangzhang/Documents/Phd/DNN/cDNN/conlleval";
 
 struct ThreadArgs {
     std::vector<Sequence>* trainData;
@@ -26,7 +32,7 @@ void* mainThread(void* threadarg){
     // initialize net
     CharBiLSTMNet charBiLSTMNet(*args->configuration, *parameters);
 
-    int numSeqToReport = 1000;
+    int numSeqToReport = 500;
     std::vector<float> epoch_loss;
     for (int j = 0; j < index->size(); ++j){
         Sequence input = (*trainData)[(*index)[j]-1];
@@ -64,68 +70,57 @@ void* mainThread(void* threadarg){
 }
 
 
-template<typename T>
-std::vector<std::vector<T>> splitVector(const std::vector<T>& vec, size_t n)
-{
-    std::vector<std::vector<T>> outVec;
-
-    size_t length = vec.size() / n;
-    size_t remain = vec.size() % n;
-
-    size_t begin = 0;
-    size_t end = 0;
-
-    for (size_t i = 0; i < std::min(n, vec.size()); ++i)
-    {
-        end += (remain > 0) ? (length + !!(remain--)) : length;
-
-        outVec.push_back(std::vector<T>(vec.begin() + begin, vec.begin() + end));
-
-        begin = end;
-    }
-
-    return outVec;
-}
-
 int main(int argc, char* argv []) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " train_bio eval_bio pretrain_emb" << std::endl;
-        return 1;
-    }
-
+    // parse argument
     std::string trainFile = argv[1];
     std::string evalFile = argv[2];
-    std::string preEmbeddingFile = argv[3];
+    std::string modelDir = argv[3];
+    std::string preEmbeddingFile = argv[4];
+    std::string wordDim = argv[5];
+    std::string charDim = argv[6];
+    std::string wordLSTMHiddenDim = argv[7];
+    std::string charLSTMHiddenDim = argv[8];
+    std::string learningRate = argv[9];
+    std::string dropoutRate = argv[10];
+    std::string allEmb = argv[11];
+    std::string numThread = argv[12];
+    std::string conllScorer = argv[13];
 
     std::map<std::string, std::string> netConf =
             {
-                    {"wordDim", "50"},
-                    {"charDim", "25"},
-                    {"wordLSTMHiddenDim", "100"},
-                    {"charLSTMHiddenDim", "25"},
-                    {"learningRate", "0.01"},
-                    {"dropoutRate", "0.5"},
+                    {"wordDim", wordDim},
+                    {"charDim", charDim},
+                    {"wordLSTMHiddenDim", wordLSTMHiddenDim},
+                    {"charLSTMHiddenDim", charLSTMHiddenDim},
+                    {"learningRate", learningRate},
+                    {"dropoutRate", dropoutRate},
                     {"preEmb", preEmbeddingFile},
-                    {"numThreads", "2"},
-                    {"modelDir", "/Users/boliangzhang/Documents/Phd/cDNN/model"}
+                    {"numThreads", numThread},
+                    {"modelDir", modelDir},
+                    {"allEmb", allEmb},
+                    {"conllScorer", conllScorer}
             };
 
+    // load raw data
     RAWDATA trainRawData;
     RAWDATA evalRawData;
-    loadRawData(trainFile, trainRawData);
-    loadRawData(evalFile, evalRawData);
+    loadRawData(trainFile, trainRawData, true);
+    loadRawData(evalFile, evalRawData, true);
 
+    // create word, label, char set
     std::set<std::string> trainWords, trainLabels, trainChars,
             evalWords, evalLabels, evalChars;
     createTokenSet(trainRawData, trainWords, trainLabels, trainChars);
     createTokenSet(evalRawData, evalWords, evalLabels, evalChars);
 
+    // load pre-trained embeddings
     std::map<std::string, Eigen::MatrixXd> preEmbedding;
-    std::printf("loading pre-trained embedding from: %s \n",
-                preEmbeddingFile.c_str());
-    loadPreEmbedding(preEmbeddingFile, preEmbedding);
-
-    expandWordSet(trainWords, evalWords, preEmbedding);
+    if (preEmbeddingFile != "0") {
+        std::printf("=> loading pre-trained embedding from: %s \n",
+                    preEmbeddingFile.c_str());
+        loadPreEmbedding(preEmbeddingFile, preEmbedding);
+        expandWordSet(trainWords, evalWords, preEmbedding);
+    }
 
     std::map<int, std::string> id2word, id2char, id2label;
     std::map<std::string, int> word2id, char2id, label2id;
@@ -140,14 +135,16 @@ int main(int argc, char* argv []) {
     std::vector<Sequence> evalData;
     createData(trainRawData, word2id, char2id, label2id, trainData);
     createData(evalRawData, word2id, char2id, label2id, evalData);
-    trainData.resize(100);
+    printf("=> %d / %d training and test sentences loaded.\n",
+           trainData.size(), evalData.size());
 
-    int wordDim = std::stoi(netConf["wordDim"]);
-    Eigen::MatrixXd* wordEmbedding = initializeVariable(wordDim, word2id.size());
-    preEmbLookUp(*wordEmbedding, preEmbedding, id2word);
+    int _wordDim = std::stoi(netConf["wordDim"]);
+    Eigen::MatrixXd* wordEmbedding = initializeVariable(_wordDim, word2id.size());
+    if (preEmbeddingFile != "0")
+        preEmbLookUp(*wordEmbedding, preEmbedding, id2word);
 
-    int charDim = std::stoi(netConf["charDim"]);
-    Eigen::MatrixXd* charEmbedding = initializeVariable(charDim, char2id.size());
+    int _charDim = std::stoi(netConf["charDim"]);
+    Eigen::MatrixXd* charEmbedding = initializeVariable(_charDim, char2id.size());
 
     //
     // starts training
@@ -156,7 +153,7 @@ int main(int argc, char* argv []) {
     CharBiLSTMNet charBiLSTMNet(netConf);
 
     int epoch = 100;
-    float bestAcc = 0;
+    float bestF1 = 0;
     for (int i = 0; i < epoch; i++) {
         time_t startTime = time(0);
         //
@@ -171,7 +168,7 @@ int main(int argc, char* argv []) {
         std::vector<int> index(trainData.size());
         std::iota(index.begin(), index.end(), 1);
         std::random_shuffle(index.begin(), index.end());
-        std::vector<std::vector<int>> splitVec = splitVector(index, numThreads);
+        std::vector<std::vector<int>> splitVec = splitVector<int>(index, numThreads);
 
         for(int j=0; j < numThreads; j++ ){
             ThreadArgs threadArgs;
@@ -199,8 +196,6 @@ int main(int argc, char* argv []) {
             }
         }
 
-//        float average = std::accumulate( epoch_loss.begin(), epoch_loss.end(), 0.0)/epoch_loss.size();
-//        std::cout << "epoch loss: " << average << std::endl;
         time_t trainTime = time(0) - startTime;
         std::printf("time elapsed: %d seconds (%.4f sec/sentence)\n", int(trainTime), float(trainTime) / trainData.size());
 
@@ -209,6 +204,10 @@ int main(int argc, char* argv []) {
         //
         int numTags = 0;
         int numCorrectTags = 0;
+        std::string evalOutPath =
+                charBiLSTMNet.configuration["modelDir"]+"/eval_scores/eval_"+
+                        std::to_string(i)+".bio";
+        std::ofstream evalOutStream(evalOutPath);
         for (int j = 0; j < evalData.size(); ++j ) {
             Sequence input = evalData[j];
             processData(input, *wordEmbedding, *charEmbedding);
@@ -225,26 +224,64 @@ int main(int argc, char* argv []) {
                         predLabelIndex.push_back(l);
                 }
             }
-            numTags += input.labelIndex.size();
-            for (int k = 0; k < input.labelIndex.size(); ++k) {
-                if (predLabelIndex[k] == input.labelIndex[k])
-                    numCorrectTags += 1;
+            for (int k = 0; k < input.wordIndex.size(); ++k) {
+                evalOutStream << input.wordIndex[k] << " "
+                              << id2label[input.labelIndex[k]] << " "
+                              << id2label[predLabelIndex[k]] << std::endl;
+            }
+            evalOutStream << std::endl;
+        }
+        evalOutStream.close();
+
+        // conll evaluation script to evaluate bio file
+        std::string evalScorePath =
+                charBiLSTMNet.configuration["modelDir"]+"/eval_scores/eval_"+
+                        std::to_string(i)+".score";
+        std::system((netConf["conllScorer"]+" < "+evalOutPath+" > "+evalScorePath).c_str());
+        std::ifstream evalInStream(evalScorePath);
+        std::string line;
+        while (line[0] != 'a')
+            std::getline(evalInStream, line);  // skip the first line
+
+        // get floats from score output
+        std::vector<float> lineValues;
+        char* s = &line[0];
+        for (; *s; s++) {
+            if (isdigit(*s)) {
+                char* pEnd;
+                lineValues.push_back(strtod(s, &pEnd));
+                s = pEnd;
             }
         }
-        float acc = float(numCorrectTags) / numTags * 100;
-        if (acc > bestAcc) {
-            std::printf("new best accuracy on eval set: %.2f%% (%d/%d)\n\n",
-                        acc, numCorrectTags, numTags);
-            bestAcc = acc;
+        float accuracy = lineValues[0];
+        float f1 = lineValues[4];
+
+        if (f1 > bestF1) {
+            std::printf("new best f1 on eval set: %.2f%%\n\n", f1);
+            bestF1 = f1;
             charBiLSTMNet.saveNet(charBiLSTMNet.configuration,
                                   charBiLSTMNet.parameters,
                                   word2id, char2id, label2id,
                                   id2word, id2char, id2label,
                                   *wordEmbedding, *charEmbedding);
         } else {
-            std::printf("accuracy on eval set: %.2f%% (%d/%d)\n\n",
-                        acc, numCorrectTags, numTags);
+            std::printf("f1 on eval set: %.2f%%\n\n", f1);
         }
+
+//        float bestAcc = 0;
+//        if (accuracy > bestAcc) {
+//            std::printf("new best accuracy on eval set: %.2f%% (%d/%d)\n\n",
+//                        accuracy, numCorrectTags, numTags);
+//            bestAcc = accuracy;
+//            charBiLSTMNet.saveNet(charBiLSTMNet.configuration,
+//                                  charBiLSTMNet.parameters,
+//                                  word2id, char2id, label2id,
+//                                  id2word, id2char, id2label,
+//                                  *wordEmbedding, *charEmbedding);
+//        } else {
+//            std::printf("accuracy on eval set: %.2f%% (%d/%d)\n\n",
+//                        accuracy, numCorrectTags, numTags);
+//        }
     }
 
     return 0;

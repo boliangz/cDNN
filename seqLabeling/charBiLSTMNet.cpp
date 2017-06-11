@@ -2,7 +2,7 @@
 // Created by Boliang Zhang on 5/31/17.
 //
 #include "charBiLSTMNet.h"
-#include "nn.h"
+#include "../nn.h"
 
 CharBiLSTMNet::CharBiLSTMNet(const std::map<std::string, std::string> & configuration) {
     this->configuration = configuration;

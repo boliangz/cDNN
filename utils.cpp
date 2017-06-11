@@ -92,3 +92,4 @@ void gradientClip(Eigen::MatrixXd & gradient){
     gradient = gradient.cwiseMin(c);
     gradient = gradient.cwiseMax(-c);
 }
+

@@ -7,18 +7,13 @@
 
 
 int main(int argc, char* argv []) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " model_dir eval_bio output_bio" << std::endl;
-        return 1;
-    }
-
-    std::string modelDir = argv[1];
-    std::string evalFile = argv[2];
-    std::string outputFile = argv[3];
+    std::string evalFile = argv[1];
+    std::string outputFile = argv[2];
+    std::string modelDir = argv[3];
 
     RAWDATA evalRawData;
 
-    loadRawData(evalFile, evalRawData);
+    loadRawData(evalFile, evalRawData, false);
 
     // load model
     std::map<std::string, int> word2id, char2id, label2id;
@@ -28,6 +23,7 @@ int main(int argc, char* argv []) {
     std::map<std::string, std::string> configuration;
     std::map<std::string, Eigen::MatrixXd*> parameters;
 
+    std::cout << "=> loading Net..." << std::endl;
     CharBiLSTMNet::loadNet(modelDir, configuration, parameters,
                            word2id, char2id, label2id,
                            id2word, id2char, id2label,
@@ -42,17 +38,15 @@ int main(int argc, char* argv []) {
     //
     // starts tagging
     //
-    std::ifstream evalFileStream(evalFile);
-    std::string line;
+    std::cout << "=> start tagging..." << std::endl;
     std::ofstream outputFileStream(outputFile);
 
-    int numSeqToReport = 1000;
+    int numSeqToReport = 500;
     for (int i = 0; i < evalData.size(); ++i ) {
         Sequence input = evalData[i];
         processData(input, wordEmbedding, charEmbedding);
 
-        bool isTrain = false;
-        charBiLSTMNet.forward(input, isTrain);
+        charBiLSTMNet.forward(input, false);
         Eigen::MatrixXd pred = charBiLSTMNet.mlp->output;
 
         std::vector<int> predLabelIndex;
@@ -64,14 +58,13 @@ int main(int argc, char* argv []) {
             }
         }
 
+        std::vector<std::string> tokenInfo = evalRawData[i]["tokenInfo"];
         for (int j = 0; j < predLabelIndex.size(); ++j) {
-            std::getline(evalFileStream, line);
-            outputFileStream << line
+            outputFileStream << tokenInfo[j]
                              << " "
                              << id2label[predLabelIndex[j]]
                              << std::endl;
         }
-        std::getline(evalFileStream, line);
         outputFileStream << std::endl;
 
         if ((i + 1) % numSeqToReport == 0){

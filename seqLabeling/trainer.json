@@ -1,0 +1,15 @@
+{
+  "train_file": "/nas/data/m1/zhangb8/LORELEI/data/reference/reference_ann_tool/2017.06.07/merged_bio/rus.bio",
+  "eval_file": "/nas/data/m1/zhangb8/LORELEI/data/reference/reference_ldc/rus/bio/test.bio",
+  "model_dir": "/nas/data/m1/zhangb8/LORELEI/models/cdnn/reference_ann_tool/rus/model",
+  "pre_emb": "/nas/data/m1/zhangb8/LORELEI/data/word_embedding/rus/ldc.emb",
+  "word_dim": "100",
+  "char_dim": "25",
+  "word_lstm_dim": "100",
+  "char_lstm_dim": "50",
+  "learning_rate": "0.01",
+  "dropout": "0.5",
+  "all_emb": "0",
+  "num_thread": "10",
+  "conll_scorer": "/nas/data/m1/zhangb8/DNN/cdnn/seqLabeling/conlleval"
+}

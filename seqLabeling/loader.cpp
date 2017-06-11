@@ -44,20 +44,23 @@ void loadPreEmbedding(std::string & filePath,
 
 
 void loadRawData(std::string & filePath,
-                 RAWDATA & rawData){
+                 RAWDATA & rawData,
+                 bool isTrain){
     std::ifstream indata(filePath);
     std::string line;
     std::vector<std::string> lineValues;
     std::map<std::string, std::vector<std::string> > sequence;
     sequence["word"] = std::vector<std::string>();
     sequence["label"] = std::vector<std::string>();
+    sequence["tokenInfo"] = std::vector<std::string>();
     while (std::getline(indata, line)) {
-        if (line.empty() || line[0] == '#') {
+        if (line.empty()) {
             if (not sequence["word"].empty() ||
                 not sequence["label"].empty()) {
                 rawData.push_back(sequence);
                 sequence["word"].clear();
                 sequence["label"].clear();
+                sequence["tokenInfo"].clear();
             }
         }
         else {
@@ -67,11 +70,27 @@ void loadRawData(std::string & filePath,
                 lineValues.push_back(cell);
             }
             std::string word = lineValues[0];
-            std::string label = lineValues.back();
+            std::string label;
+            if (isTrain){
+                label = lineValues.back();
+            }
+            else {
+                label = "O";
+                sequence["tokenInfo"].push_back(line);
+            }
+
             sequence.find("word")->second.push_back(word);
             sequence.find("label")->second.push_back(label);
             lineValues.clear();
         }
+    }
+    // push last sequence if available
+    if (not sequence["word"].empty() ||
+        not sequence["label"].empty()) {
+        rawData.push_back(sequence);
+        sequence["word"].clear();
+        sequence["label"].clear();
+        sequence["tokenInfo"].clear();
     }
 }
 

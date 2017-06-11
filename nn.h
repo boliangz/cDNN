@@ -5,9 +5,10 @@
 #ifndef CDNN_NN_H
 #define CDNN_NN_H
 
-#include "loader.h"
+#include "seqLabeling/loader.h"
 #include <Eigen/Core>
 #include <iostream>
+#include <mutex>
 
 class Layer {
 

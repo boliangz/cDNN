@@ -5,7 +5,7 @@
 #ifndef CDNN_CHARBILSTMNET_H
 #define CDNN_CHARBILSTMNET_H
 
-#include "net.h"
+#include "../net.h"
 
 class CharBiLSTMNet: public Net {
 public:

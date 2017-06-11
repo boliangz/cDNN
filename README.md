@@ -1,19 +1,19 @@
 # cDNN
-DNN in C++.
+A bi-directional LSTM name tagger with character embeddings written in C++.
 
-### Compile:
-Bi-LSTM tagger:
+### Compile
+trainer:
 ```
-g++ -std=c++0x -O3 -I third_party/Eigen main.cpp bi_lstm.cpp loader.cpp nn.cpp utils.cpp -o bin/main
-```
-
-Bi-LSTM with character embedding tagger:
-```
-g++ -std=c++0x -O3 -I third_party/Eigen main.cpp bi_lstm_with_char.cpp.cpp loader.cpp nn.cpp utils.cpp -o bin/main
+g++ -std=c++11 -O3 -pthread -I third_party/eigen/ trainer.cpp loader.cpp nn.cpp utils.cpp charBiLSTMNet.cpp net.cpp -o bin/trainer
 ```
 
-### Run
-main <train_bio> <eval_bio> <pretrain_emb> <model_dir>
+tagger:
+```
+g++ -std=c++11 -O3 -pthread -I third_party/eigen/ tagger.cpp loader.cpp nn.cpp utils.cpp charBiLSTMNet.cpp net.cpp -o bin/tagger
+```
+
+### Train
+trainer <train_bio> <eval_bio> <pretrain_emb> <model_dir>
 
 example:
 ```
