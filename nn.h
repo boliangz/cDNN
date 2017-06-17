@@ -5,10 +5,11 @@
 #ifndef CDNN_NN_H
 #define CDNN_NN_H
 
-#include "seqLabeling/loader.h"
 #include <Eigen/Core>
 #include <iostream>
 #include <mutex>
+#include <map>
+#include <vector>
 
 class Layer {
 
@@ -68,9 +69,13 @@ public:
     LSTM(int inputSize, int hiddenDim, std::string name, bool isBatch,
          const std::map<std::string, Eigen::MatrixXd*>& parameters);
 
-    void forward(const Eigen::MatrixXd & input);
+    void forward(const Eigen::MatrixXd & input,
+                 Eigen::MatrixXd* hprev,
+                 Eigen::MatrixXd* cprev);
 
-    void backward(const Eigen::MatrixXd & dy);
+    void backward(const Eigen::MatrixXd & dy,
+                  Eigen::MatrixXd* dhnext,
+                  Eigen::MatrixXd* dcnext);
 
 };
 

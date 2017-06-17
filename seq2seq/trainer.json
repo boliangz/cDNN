@@ -1,0 +1,12 @@
+{
+  "train_file": "/Users/boliangzhang/Phd/ML/data/news2015_transliteration/NEWS2015_I2R/NEWS15_train_ChEn_28678.xml",
+  "eval_file": "/Users/boliangzhang/Phd/ML/data/news2015_transliteration/NEWS2015_I2R/NEWS15_dev_ChEn_2719.xml",
+  "model_dir": "/Users/boliangzhang/Phd/ML/cDNN/model",
+  "token_dim": "100",
+  "token_lstm_dim": "100",
+  "learning_rate": "0.01",
+  "encoder_stack": "2",
+  "decoder_stack": "2",
+  "dropout": "0.5",
+  "num_thread": "10"
+}

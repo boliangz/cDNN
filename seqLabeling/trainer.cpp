@@ -8,9 +8,6 @@
 #include <pthread.h>
 #include <unistd.h>
 
-std::string conllScorer = "/nas/data/m1/zhangb8/DNN/cdnn/conlleval";
-//std::string conllScorer = "/Users/boliangzhang/Documents/Phd/DNN/cDNN/conlleval";
-
 struct ThreadArgs {
     std::vector<Sequence>* trainData;
     Eigen::MatrixXd* wordEmbedding;

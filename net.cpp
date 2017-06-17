@@ -3,24 +3,25 @@
 //
 #include "net.h"
 #include "utils.h"
+#include <fstream>
 
-
-void Net::gradientCheck(Sequence & input){
+void Net::gradientCheck(Input & input,
+                        std::map<std::string,
+                                Eigen::MatrixXd*> & additionalParam){
     std::cout << "=> Network gradient checking..." << std::endl;
 
     int num_checks = 10;
     double delta = 10e-5;
 
-    std::vector<std::pair<std::string, Eigen::MatrixXd*> > paramToCheck;
-    std::map<std::string, Eigen::MatrixXd*>::iterator it;
-    for (it = parameters.begin(); it != parameters.end(); ++it)
-        paramToCheck.push_back({it->first, it->second});
-    paramToCheck.push_back({name+"_wordInput", & input.wordEmb});
+    std::map<std::string, Eigen::MatrixXd*> paramToCheck;
+    paramToCheck.insert(parameters.begin(), parameters.end());
+    paramToCheck.insert(additionalParam.begin(), additionalParam.end());
 
     std::cout.precision(15);
-    for (int i = 0; i < paramToCheck.size(); ++i) {
-        auto paramName = paramToCheck[i].first;
-        auto param = paramToCheck[i].second;
+    std::map<std::string, Eigen::MatrixXd*>::iterator it;
+    for (it = paramToCheck.begin(); it != paramToCheck.end(); ++it) {
+        auto paramName = it->first;
+        auto param = it->second;
         auto paramDiff = diff[paramName];
 
         std::printf("checking %s %s\n", name.c_str(), paramName.c_str());
@@ -60,12 +61,13 @@ void Net::gradientCheck(Sequence & input){
 }
 
 void Net::updateEmbedding(Eigen::MatrixXd* embDict,
+                          Eigen::MatrixXd& diffEmb,
                           const std::vector<int> & wordIndex){
     mtx.lock();
     float learningRate = std::stof(configuration["learningRate"]);
-    gradientClip(diff[name+"_wordInput"]);
+    gradientClip(diffEmb);
     for (int i = 0; i < wordIndex.size(); ++i) {
-        Eigen::MatrixXd dWord = diff[name+"_wordInput"].col(i);
+        Eigen::MatrixXd dWord = diffEmb.col(i);
         embDict->col(wordIndex[i]) -= learningRate * dWord;
     }
     mtx.unlock();

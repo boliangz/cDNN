@@ -3,11 +3,7 @@
 //
 #include "nn.h"
 #include "utils.h"
-#include "seqLabeling/loader.h"
-#include <vector>
 #include <random>
-#include <Eigen/Core>
-#include <iostream>
 
 //
 // Base class implementation
@@ -236,7 +232,9 @@ LSTM::LSTM(int inputSize, int hiddenDim, std::string name, bool isBatch,
     copyParameters(parameters);
 }
 
-void LSTM::forward(const Eigen::MatrixXd & input){
+void LSTM::forward(const Eigen::MatrixXd & input,
+                   Eigen::MatrixXd* _h_prev,
+                   Eigen::MatrixXd* _c_prev){
     auto Wi = parameters[name + "_Wi"];
     auto Wf = parameters[name + "_Wf"];
     auto Wc = parameters[name + "_Wc"];
@@ -250,8 +248,16 @@ void LSTM::forward(const Eigen::MatrixXd & input){
     long hiddenDim = Wi->cols();
     long inputSize = Wi->rows() - hiddenDim;
 
-    Eigen::MatrixXd h_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    Eigen::MatrixXd c_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    Eigen::MatrixXd h_prev;
+    Eigen::MatrixXd c_prev;
+    if (_h_prev == NULL || _c_prev ==NULL ) {
+        h_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
+        c_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    } else {
+        h_prev = *_h_prev;
+        c_prev = *_c_prev;
+
+    }
 
     cache[name + "_input"] = input;
     cache[name + "_h"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
@@ -261,6 +267,8 @@ void LSTM::forward(const Eigen::MatrixXd & input){
     cache[name + "_ho"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
     cache[name + "_hc"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
     cache[name + "_output"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    cache[name + "_h_prev"] = h_prev;
+    cache[name + "_c_prev"] = c_prev;
 
     for(int i=0; i < sequenceLen; i++){
         Eigen::MatrixXd z(hiddenDim + inputSize, 1);
@@ -291,7 +299,9 @@ void LSTM::forward(const Eigen::MatrixXd & input){
     this->output = cache[name+"_output"];
 }
 
-void LSTM::backward(const Eigen::MatrixXd & dy) {
+void LSTM::backward(const Eigen::MatrixXd & dy,
+                    Eigen::MatrixXd* dhnext,
+                    Eigen::MatrixXd* dcnext) {
     cache[name+"_dy"] = dy;
 
     auto Wi = parameters[name + "_Wi"];
@@ -303,8 +313,15 @@ void LSTM::backward(const Eigen::MatrixXd & dy) {
     long hiddenDim = Wi->cols();
     long inputSize = Wi->rows() - hiddenDim;
 
-    Eigen::MatrixXd dh_next = Eigen::MatrixXd::Zero(hiddenDim, 1);
-    Eigen::MatrixXd dc_next = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    Eigen::MatrixXd dh_next;
+    Eigen::MatrixXd dc_next;
+    if (dhnext == NULL || dcnext == NULL ) {
+        dh_next = Eigen::MatrixXd::Zero(hiddenDim, 1);
+        dc_next = Eigen::MatrixXd::Zero(hiddenDim, 1);
+    } else {
+        dh_next = *dhnext;
+        dc_next = *dcnext;
+    }
 
     // initialize parameter diff to zero.
     diff[name + "_Wi"] = Eigen::MatrixXd::Zero(inputSize + hiddenDim, hiddenDim);
@@ -316,6 +333,8 @@ void LSTM::backward(const Eigen::MatrixXd & dy) {
     diff[name + "_bc"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
     diff[name + "_bo"] = Eigen::MatrixXd::Zero(hiddenDim, 1);
     diff[name + "_input"] = Eigen::MatrixXd::Zero(inputSize, sequenceLen);
+    diff[name + "_h_next"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
+    diff[name + "_c_next"] = Eigen::MatrixXd::Zero(hiddenDim, sequenceLen);
 
     for(long t = sequenceLen; t --> 0;) {
         Eigen::MatrixXd x_t = cache[name + "_input"].col(t);
@@ -330,8 +349,8 @@ void LSTM::backward(const Eigen::MatrixXd & dy) {
         Eigen::MatrixXd c_prev;
         Eigen::MatrixXd h_prev;
         if (t == 0){
-            c_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
-            h_prev = Eigen::MatrixXd::Zero(hiddenDim, 1);
+            c_prev = cache[name + "_c_prev"];
+            h_prev = cache[name + "_h_prev"];
         }
         else {
             c_prev = cache[name + "_c"].col(t-1);
@@ -384,7 +403,9 @@ void LSTM::backward(const Eigen::MatrixXd & dy) {
         diff[name + "_bf"] += dbf;
         diff[name + "_bc"] += dbc;
         diff[name + "_bo"] += dbo;
-        diff[name + "_input"].col(t) += dx;
+        diff[name + "_h_next"].col(t) = dh_next;
+        diff[name + "_c_next"].col(t) = dc_next;
+        diff[name + "_input"].col(t) = dx;
     }
     this->inputDiff = diff[name+"_input"];
 }
@@ -446,8 +467,8 @@ BiLSTM::BiLSTM(int inputSize, int hiddenDim, std::string name, bool isBatch,
 
 
 void BiLSTM::forward(const Eigen::MatrixXd & input) {
-    fwdLSTM->forward(input);
-    bwdLSTM->forward(input.rowwise().reverse());
+    fwdLSTM->forward(input, NULL, NULL);
+    bwdLSTM->forward(input.rowwise().reverse(), NULL, NULL);
 
     long hiddenDim = parameters[name+"_fwdLSTM_bi"]->rows();
     long sequenceLen = input.cols();
@@ -467,10 +488,10 @@ void BiLSTM::backward(const Eigen::MatrixXd & dy) {
     cache[name+"_dy"] = dy;
 
     Eigen::MatrixXd fwdDy = dy.topRows(dy.rows()/2);
-    fwdLSTM->backward(fwdDy);
+    fwdLSTM->backward(fwdDy, NULL, NULL);
 
     Eigen::MatrixXd bwdDy = dy.bottomRows(dy.rows()/2).rowwise().reverse();
-    bwdLSTM->backward(bwdDy);
+    bwdLSTM->backward(bwdDy, NULL, NULL);
 
     diff.clear();
     diff.insert(fwdLSTM->diff.begin(), fwdLSTM->diff.end());

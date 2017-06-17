@@ -8,6 +8,8 @@
 #include <Eigen/Core>
 #include <vector>
 
+struct Input {};
+
 Eigen::MatrixXd sigmoid(const Eigen::MatrixXd & x);
 
 Eigen::MatrixXd tanh(const Eigen::MatrixXd & x);

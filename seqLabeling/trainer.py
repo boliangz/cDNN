@@ -5,7 +5,9 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from datetime import datetime
+import subprocess
 
 import utils
 
@@ -63,6 +65,16 @@ if __name__ == "__main__":
     conf['model_dir'] = os.path.join(conf['model_dir'], model_id)
     os.mkdir(conf['model_dir'])
 
+    # create directory in model_dir to save eval results for each epoch
+    os.mkdir(os.path.join(conf['model_dir'], "eval_scores"))
+
+    # register logger to save print (messages to both stdout and disk)
+    training_log_path = os.path.join(conf['model_dir'], 'training_log.txt')
+    if os.path.exists(training_log_path):
+        os.remove(training_log_path)
+    f = open(training_log_path, 'w')
+    sys.stdout = utils.Tee(sys.stdout, f)
+
     # copy trainer config json to model dir
     print("=> net configuration")
     shutil.copy(args.trainer_json, conf['model_dir'])
@@ -93,8 +105,10 @@ if __name__ == "__main__":
     print('=>executing trainer...')
     print(' '.join(cmd))
 
-    subprocess.call(cmd)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
-
+    for line in p.stdout:
+        print(str(line.rstrip(), 'utf-8'))
+        p.stdout.flush()
 
 
