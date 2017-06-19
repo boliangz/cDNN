@@ -7,13 +7,16 @@
 
 #include "../net.h"
 
-struct InputSeq2Seq: Input {
+struct Seq2SeqInput: public Input {
     std::vector<int> srcIndex;
     Eigen::MatrixXd srcEmb;
     std::vector<int> trgIndex;
     Eigen::MatrixXd trgEmb;
     Eigen::MatrixXd trgOneHot;
-    int seqLen;
+    // target token embedding lookup dict, used in predicting
+    const Eigen::MatrixXd* trgTokenEmb;
+    int srcLen;
+    int trgLen;
 };
 
 class SeqToSeq: public Net {
@@ -22,12 +25,12 @@ public:
     SeqToSeq(const std::map<std::string, std::string> & configuration,
              const std::map<std::string, Eigen::MatrixXd*>& parameters);
 
-//    void forward(const InputSeq2Seq & input);
-    void forward(const InputSeq2Seq & input, bool isTrain);
+//    void forward(const Seq2SeqInput & input);
+    void forward(const Input & input, bool isTrain);
 
     void backward();
 
-    void gradientCheck(InputSeq2Seq & input);
+    void gradientCheck(Seq2SeqInput & input);
 
     void update();
 

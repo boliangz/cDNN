@@ -11,16 +11,19 @@
 #include <Eigen/Core>
 #include <map>
 
-void loadRawData(std::string & filePath,
-                 std::vector<InputSeq2Seq> & data,
+void loadRawData(const std::string & filePath,
+                 const std::map<std::string, int>& srcToken2Id,
+                 const std::map<std::string, int>& trgToken2Id,
+                 std::vector<Seq2SeqInput> & data,
                  bool isTrain);
 
-void processData(InputSeq2Seq & s,
+void processData(Seq2SeqInput & s,
                  const Eigen::MatrixXd& srcEmbedding,
-                 const Eigen::MatrixXd& trgEmbedding);
+                 const Eigen::MatrixXd& trgEmbedding,
+                 bool isTrain);
 
-void createDate(std::vector<InputSeq2Seq> & data,
-                const std::map<std::string, int>& trgToken2Id);
+//void createDate(std::vector<Seq2SeqInput> & data,
+//                const std::map<std::string, int>& trgToken2Id);
 
 void loadMapping(std::string & modelDir,
                  std::map<std::string, int> & srcToken2Id,

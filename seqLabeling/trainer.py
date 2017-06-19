@@ -16,6 +16,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("trainer_json")
+    parser.add_argument('-c', action="store_true", default=False,
+                        help="compile trainer")
 
     args = parser.parse_args()
 
@@ -82,6 +84,22 @@ if __name__ == "__main__":
     # print net configuration
     for key, value in conf.items():
         print("%s = %s" % (key, value))
+
+    # compile trainer
+    root_dir = os.path.dirname(os.path.abspath("__file__"))
+    trainer_exe = os.path.join(root_dir, "../bin/seqLabelingTrainer")
+    eigen_path = os.path.join(root_dir, '../third_party/eigen/')
+    cmd = ['g++', '-std=c++11', '-O3', '-pthread', '-I', eigen_path,
+           os.path.join(root_dir, '../nn.cpp'),
+           os.path.join(root_dir, '../utils.cpp'),
+           os.path.join(root_dir, '../net.cpp'),
+           os.path.join(root_dir, 'trainer.cpp'),
+           os.path.join(root_dir, 'loader.cpp'),
+           os.path.join(root_dir, 'charBiLSTMNet.cpp'),
+           '-o', trainer_exe]
+    print('=> compiling trainer...')
+    print(' '.join(cmd))
+    subprocess.call(' '.join(cmd), shell=True)
 
     # executing trainer
     trainer_exe = os.path.join(os.path.dirname(os.path.abspath("__file__")),

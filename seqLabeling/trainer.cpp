@@ -9,7 +9,7 @@
 #include <unistd.h>
 
 struct ThreadArgs {
-    std::vector<Sequence>* trainData;
+    std::vector<SeqLabelingInput>* trainData;
     Eigen::MatrixXd* wordEmbedding;
     Eigen::MatrixXd* charEmbedding;
     std::vector<int>* index;
@@ -20,7 +20,7 @@ struct ThreadArgs {
 void* mainThread(void* threadarg){
     struct ThreadArgs *args = (struct ThreadArgs *) threadarg;
 
-    std::vector<Sequence>* trainData = args->trainData;
+    std::vector<SeqLabelingInput>* trainData = args->trainData;
     Eigen::MatrixXd* wordEmbedding = args->wordEmbedding;
     Eigen::MatrixXd* charEmbedding = args->charEmbedding;
     std::vector<int>* index = args->index;
@@ -29,16 +29,16 @@ void* mainThread(void* threadarg){
     // initialize net
     CharBiLSTMNet charBiLSTMNet(*args->configuration, *parameters);
 
-    int numSeqToReport = 500;
+    int numSeqToReport = 1000;
     std::vector<float> epoch_loss;
     for (int j = 0; j < index->size(); ++j){
-        Sequence input = (*trainData)[(*index)[j]-1];
+        SeqLabelingInput input = (*trainData)[(*index)[j]-1];
 
         processData(input, *wordEmbedding, *charEmbedding);
         //
         // network forward
         //
-        charBiLSTMNet.forward(input);
+        charBiLSTMNet.forward(input, true);
         Eigen::MatrixXd loss = charBiLSTMNet.crossEntropyLoss->output;
         epoch_loss.push_back(loss.sum() / input.seqLen);
 
@@ -50,13 +50,15 @@ void* mainThread(void* threadarg){
         //
         // network gradient check
         //
-//            charBiLSTMNet.gradientCheck(input);
+//        charBiLSTMNet.gradientCheck(input);
 
         //
         // network parameters update
         //
         charBiLSTMNet.update();
-        charBiLSTMNet.updateEmbedding(wordEmbedding, input.wordIndex);
+        charBiLSTMNet.updateEmbedding(wordEmbedding,
+                                      charBiLSTMNet.diff[charBiLSTMNet.name+"_wordInput"],
+                                      input.wordIndex);
 
         if ((j + 1) % numSeqToReport == 0){
             std::vector<float> v(epoch_loss.end() - numSeqToReport, epoch_loss.end());
@@ -128,12 +130,18 @@ int main(int argc, char* argv []) {
     set2map(trainLabels, id2label, label2id, false);
     netConf["labelSize"] = std::to_string(label2id.size());
 
-    std::vector<Sequence> trainData;
-    std::vector<Sequence> evalData;
+    std::vector<SeqLabelingInput> trainData;
+    std::vector<SeqLabelingInput> evalData;
     createData(trainRawData, word2id, char2id, label2id, trainData);
     createData(evalRawData, word2id, char2id, label2id, evalData);
-    printf("=> %d / %d training and test sentences loaded.\n",
-           trainData.size(), evalData.size());
+    int numTrainToken = 0;
+    int numEvalToken = 0;
+    for (int i = 0; i < trainData.size(); ++i)
+        numTrainToken += trainData[i].wordIndex.size();
+    for (int i = 0; i < evalData.size(); ++i)
+        numEvalToken += evalData[i].wordIndex.size();
+    printf("=> %d / %d training and test sentences loaded. (%d / %d tokens)\n",
+           trainData.size(), evalData.size(), numTrainToken, numEvalToken);
 
     int _wordDim = std::stoi(netConf["wordDim"]);
     Eigen::MatrixXd* wordEmbedding = initializeVariable(_wordDim, word2id.size());
@@ -206,7 +214,7 @@ int main(int argc, char* argv []) {
                         std::to_string(i)+".bio";
         std::ofstream evalOutStream(evalOutPath);
         for (int j = 0; j < evalData.size(); ++j ) {
-            Sequence input = evalData[j];
+            SeqLabelingInput input = evalData[j];
             processData(input, *wordEmbedding, *charEmbedding);
 
             bool isTrain = false;
@@ -253,32 +261,32 @@ int main(int argc, char* argv []) {
         float accuracy = lineValues[0];
         float f1 = lineValues[4];
 
-        if (f1 > bestF1) {
-            std::printf("new best f1 on eval set: %.2f%%\n\n", f1);
-            bestF1 = f1;
-            charBiLSTMNet.saveNet(charBiLSTMNet.configuration,
-                                  charBiLSTMNet.parameters,
-                                  word2id, char2id, label2id,
-                                  id2word, id2char, id2label,
-                                  *wordEmbedding, *charEmbedding);
-        } else {
-            std::printf("f1 on eval set: %.2f%%\n\n", f1);
-        }
-
-//        float bestAcc = 0;
-//        if (accuracy > bestAcc) {
-//            std::printf("new best accuracy on eval set: %.2f%% (%d/%d)\n\n",
-//                        accuracy, numCorrectTags, numTags);
-//            bestAcc = accuracy;
+//        if (f1 > bestF1) {
+//            std::printf("new best f1 on eval set: %.2f%%\n\n", f1);
+//            bestF1 = f1;
 //            charBiLSTMNet.saveNet(charBiLSTMNet.configuration,
 //                                  charBiLSTMNet.parameters,
 //                                  word2id, char2id, label2id,
 //                                  id2word, id2char, id2label,
 //                                  *wordEmbedding, *charEmbedding);
 //        } else {
-//            std::printf("accuracy on eval set: %.2f%% (%d/%d)\n\n",
-//                        accuracy, numCorrectTags, numTags);
+//            std::printf("f1 on eval set: %.2f%%\n\n", f1);
 //        }
+
+        float bestAcc = 0;
+        if (accuracy > bestAcc) {
+            std::printf("new best accuracy on eval set: %.2f%% (%d/%d)\n\n",
+                        accuracy, numCorrectTags, numTags);
+            bestAcc = accuracy;
+            charBiLSTMNet.saveNet(charBiLSTMNet.configuration,
+                                  charBiLSTMNet.parameters,
+                                  word2id, char2id, label2id,
+                                  id2word, id2char, id2label,
+                                  *wordEmbedding, *charEmbedding);
+        } else {
+            std::printf("accuracy on eval set: %.2f%% (%d/%d)\n\n",
+                        accuracy, numCorrectTags, numTags);
+        }
     }
 
     return 0;

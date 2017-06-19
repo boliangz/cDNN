@@ -1,12 +1,13 @@
 {
-  "train_file": "/Users/boliangzhang/Phd/ML/data/news2015_transliteration/NEWS2015_I2R/NEWS15_train_ChEn_28678.xml",
-  "eval_file": "/Users/boliangzhang/Phd/ML/data/news2015_transliteration/NEWS2015_I2R/NEWS15_dev_ChEn_2719.xml",
+  "train_file": "/Users/boliangzhang/Phd/ML/data/news2015_transliteration/NEWS2015_I2R/NEWS15_train_EnCh_37753.xml",
+  "eval_file": "/Users/boliangzhang/Phd/ML/data/news2015_transliteration/NEWS2015_I2R/NEWS15_dev_EnCh_2802.xml",
   "model_dir": "/Users/boliangzhang/Phd/ML/cDNN/model",
-  "token_dim": "100",
-  "token_lstm_dim": "100",
+  "token_dim": "25",
+  "token_lstm_dim": "25",
   "learning_rate": "0.01",
-  "encoder_stack": "2",
-  "decoder_stack": "2",
+  "encoder_stack": "1",
+  "decoder_stack": "1",
   "dropout": "0.5",
-  "num_thread": "10"
+  "num_thread": "6",
+  "num_epoch": "100"
 }

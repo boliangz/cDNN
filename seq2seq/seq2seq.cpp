@@ -4,12 +4,14 @@
 #include "seq2seq.h"
 
 SeqToSeq::SeqToSeq(const std::map<std::string, std::string> & configuration){
+    this->configuration = configuration;
+
     int tokenDim = std::stoi(configuration.at("tokenDim"));
     int tokenLSTMDim = std::stoi(configuration.at("tokenLSTMDim"));
     int encoderStack = std::stoi(configuration.at("encoderStack"));
     int decoderStack = std::stoi(configuration.at("decoderStack"));
     float dropoutRate = std::stof(configuration.at("dropoutRate"));
-    int trgTokenSize = std::stoi(this->configuration["trgTokenSize"]);
+    int trgTokenSize = std::stoi(configuration.at("trgTokenSize"));
 
     // initialize encoder
     for (int i = 0; i < encoderStack; ++i) {
@@ -46,16 +48,21 @@ SeqToSeq::SeqToSeq(const std::map<std::string, std::string> & configuration){
     mlp = new MLP(tokenLSTMDim, trgTokenSize, "mlp");
     parameters.insert(mlp->parameters.begin(),
                       mlp->parameters.end());
+
+    // initialize loss
+    crossEntropyLoss = new CrossEntropyLoss("crossEntropyLoss");
 }
 
 SeqToSeq::SeqToSeq(const std::map<std::string, std::string> & configuration,
                    const std::map<std::string, Eigen::MatrixXd*>& parameters) {
+    this->configuration = configuration;
+
     int tokenDim = std::stoi(configuration.at("tokenDim"));
     int tokenLSTMDim = std::stoi(configuration.at("tokenLSTMDim"));
     int encoderStack = std::stoi(configuration.at("encoderStack"));
     int decoderStack = std::stoi(configuration.at("decoderStack"));
     float dropoutRate = std::stof(configuration.at("dropoutRate"));
-    int trgTokenSize = std::stoi(this->configuration["trgTokenSize"]);
+    int trgTokenSize = std::stoi(configuration.at("trgTokenSize"));
 
     // initialize encoder
     for (int i = 0; i < encoderStack; ++i) {
@@ -96,12 +103,17 @@ SeqToSeq::SeqToSeq(const std::map<std::string, std::string> & configuration,
     mlp = new MLP(tokenLSTMDim, trgTokenSize, "mlp", parameters);
     this->parameters.insert(mlp->parameters.begin(),
                             mlp->parameters.end());
+
+    // initialize loss
+    crossEntropyLoss = new CrossEntropyLoss("crossEntropyLoss");
 }
 
 
-void SeqToSeq::forward(const InputSeq2Seq & input, bool isTrain) {
+void SeqToSeq::forward(const Input & input, bool isTrain) {
+    const Seq2SeqInput& seq2SeqInput = static_cast<const Seq2SeqInput&>(input);
+
     // stacked encoder forward
-    Eigen::MatrixXd lstmInput = input.srcEmb;
+    Eigen::MatrixXd lstmInput = seq2SeqInput.srcEmb;
     for (int i = 0; i < encoder.size(); i++){
         encoder[i]->forward(lstmInput, NULL, NULL);
         lstmInput = encoder[i]->output;
@@ -110,13 +122,13 @@ void SeqToSeq::forward(const InputSeq2Seq & input, bool isTrain) {
     // forward when training a model
     if (isTrain) {
         // stacked decoder forward
-        lstmInput = input.trgEmb;
+        lstmInput = seq2SeqInput.trgEmb;
         for (int i = 0; i < decoder.size(); i++){
             if (i == 0){
                 Eigen::MatrixXd h_prev = encoder.back()->
-                        cache[encoder.back()->name+"_h"].col(input.seqLen-1);
+                        cache[encoder.back()->name+"_h"].rightCols(1);
                 Eigen::MatrixXd c_prev = encoder.back()->
-                        cache[encoder.back()->name+"_c"].col(input.seqLen-1);
+                        cache[encoder.back()->name+"_c"].rightCols(1);
                 decoder[i]->forward(lstmInput, &h_prev, &c_prev);
             }
             else
@@ -128,22 +140,19 @@ void SeqToSeq::forward(const InputSeq2Seq & input, bool isTrain) {
         mlp->forward(decoder.back()->output);
 
         // cross entropy loss forward
-        crossEntropyLoss->forward(mlp->output, input.trgOneHot);
+        crossEntropyLoss->forward(mlp->output, seq2SeqInput.trgOneHot);
 
         output = crossEntropyLoss->output;
     }
-    // forward when testing
+        // forward when testing
     else {
-        int tokenDim = std::stoi(configuration.at("tokenDim"));
         int tokenLSTMDim = std::stoi(configuration.at("tokenLSTMDim"));
         int trgTokenSize = std::stoi(this->configuration["trgTokenSize"]);
 
         std::vector<Eigen::MatrixXd> pred;
 
-        // init <s>
-        Eigen::MatrixXd start(tokenDim, 1);
-        start.fill(0);
-        start(1, 0) = 1;
+        // init <s> embeddings as the start of the predicted sequence
+        Eigen::MatrixXd start = seq2SeqInput.trgEmb.col(0);
 
         // init h_prev and c_prev
         Eigen::MatrixXd h_prev(tokenLSTMDim, decoder.size());
@@ -152,27 +161,18 @@ void SeqToSeq::forward(const InputSeq2Seq & input, bool isTrain) {
         c_prev.fill(0);
 
         h_prev.col(0) = encoder.back()->
-                cache[encoder.back()->name+"_h"].col(input.seqLen-1);
+                cache[encoder.back()->name+"_h"].rightCols(1);
         c_prev.col(0) = encoder.back()->
-                cache[encoder.back()->name+"_c"].col(input.seqLen-1);
+                cache[encoder.back()->name+"_c"].rightCols(1);
 
         // starts from <s>, generate each token until </s> met
-        while (true) {
+        lstmInput = start;
+        while (pred.size() < 100) {
             // stacked decoder forward
-            lstmInput = start;
             for (int i = 0; i < decoder.size(); i++){
                 Eigen::MatrixXd h_p = h_prev.col(i);
                 Eigen::MatrixXd c_p = c_prev.col(i);
-                if (i == 0){
-
-                    decoder[i]->forward(lstmInput,
-                                        &h_p,
-                                        &c_p);
-                }
-                else
-                    decoder[i]->forward(lstmInput,
-                                        &h_p,
-                                        &c_p);
+                decoder[i]->forward(lstmInput, &h_p, &c_p);
                 lstmInput = decoder[i]->output;
 
                 // update h_prev and c_prev
@@ -186,9 +186,21 @@ void SeqToSeq::forward(const InputSeq2Seq & input, bool isTrain) {
             // push to prediction
             pred.push_back(mlp->output);
 
+            // get the token index of the predicted token
+            int tokenIndex;
+            for (int i = 0; i < mlp->output.rows(); ++i)
+                if (mlp->output(i, 0) == mlp->output.maxCoeff()){
+                    tokenIndex = i;
+                    break;
+                }
+
             // break if the predicted token is </s>
-            if (mlp->output(0, 0) == 1)
+            if (tokenIndex == 1)
                 break;
+
+            // update lstmInput with the token embedding of the current decoder
+            // output
+            lstmInput = seq2SeqInput.trgTokenEmb->col(tokenIndex);
         }
 
         // prepare output
@@ -213,7 +225,6 @@ void SeqToSeq::backward() {
                 mlp->diff.end());
 
     // stacked decoder backward
-    int sequenceLen = crossEntropyLoss->output.cols();
     int tokenLSTMDim = std::stoi(configuration["tokenLSTMDim"]);
     Eigen::MatrixXd dy = mlp->inputDiff;
     for (long i = decoder.size(); i --> 0;){
@@ -222,14 +233,15 @@ void SeqToSeq::backward() {
         diff.insert(decoder[i]->diff.begin(),
                     decoder[i]->diff.end());
     }
-    diff[name+"_trgTokenInput"] = decoder[0]->inputDiff;
+    diff["trgTokenInput"] = decoder[0]->inputDiff;
 
     // stacked encoder backward
-    dy = Eigen::MatrixXd::Zero(tokenLSTMDim, sequenceLen);
+    int srcLen = encoder[0]->cache[encoder[0]->name+"_input"].cols();
+    dy = Eigen::MatrixXd::Zero(tokenLSTMDim, srcLen);
     for(long i = encoder.size(); i--> 0;) {
         if (i == encoder.size()-1){
-            Eigen::MatrixXd dh_next = decoder[0]->diff[decoder[0]->name+"_h_prev"].col(0);
-            Eigen::MatrixXd dc_next = decoder[0]->diff[decoder[0]->name+"_c_prev"].col(0);
+            Eigen::MatrixXd dh_next = decoder[0]->diff[decoder[0]->name+"_h_next"].col(0);
+            Eigen::MatrixXd dc_next = decoder[0]->diff[decoder[0]->name+"_c_next"].col(0);
             encoder[i]->backward(dy, &dh_next, &dc_next);
         } else {
             encoder[i]->backward(dy, NULL, NULL);
@@ -239,14 +251,13 @@ void SeqToSeq::backward() {
         diff.insert(encoder[i]->diff.begin(),
                     encoder[i]->diff.end());
     }
-    diff[name+"_srcTokenInput"] = encoder[0]->inputDiff;
+    diff["srcTokenInput"] = encoder[0]->inputDiff;
 }
 
-void SeqToSeq::gradientCheck(InputSeq2Seq & input) {
-    std::map<std::string,
-            Eigen::MatrixXd*> additionalParam;
-    additionalParam[name+"_srcTokenInput"] = &input.srcEmb;
-    additionalParam[name+"_trgTokenInput"] = &input.trgEmb;
+void SeqToSeq::gradientCheck(Seq2SeqInput & input) {
+    std::map<std::string, Eigen::MatrixXd*> additionalParam;
+    additionalParam["srcTokenInput"] = &input.srcEmb;
+    additionalParam["trgTokenInput"] = &input.trgEmb;
 
     Net::gradientCheck(input, additionalParam);
 }

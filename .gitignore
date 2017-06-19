@@ -5,6 +5,7 @@ cmake-build-debug/
 bin/
 data/
 old/
+**/__pycache__/
 
 # files to ignore
 **/*.o

@@ -12,8 +12,8 @@
 
 class Net: public Layer {
 public:
-    virtual void forward(const Input & input){}
-    virtual void forward(const Input & input, bool isTrain){}
+//    virtual void forward(const Input & input) = 0;
+    virtual void forward(const Input & input, bool isTrain) = 0;
 
     static void saveNet(const std::map<std::string, std::string>& configuration,
                         const std::map<std::string, Eigen::MatrixXd*> parameters,
@@ -38,9 +38,9 @@ public:
                         Eigen::MatrixXd& wordEmbedding,
                         Eigen::MatrixXd& charEmbedding);
 
-    void gradientCheck(Input & input,
-                       std::map<std::string,
-                               Eigen::MatrixXd*> & additionalParam);
+    virtual void gradientCheck(Input & input,
+                               std::map<std::string,
+                                       Eigen::MatrixXd*> & additionalParam);
 
     void updateEmbedding(Eigen::MatrixXd* embDict,
                          Eigen::MatrixXd& diffEmb,

@@ -67,23 +67,30 @@ CharBiLSTMNet::CharBiLSTMNet(const std::map<std::string, std::string> & configur
 }
 
 
-void CharBiLSTMNet::forward(const Sequence & input) {
+void CharBiLSTMNet::forward(const Input & input, bool isTrain) {
+    double originalDropoutRate;
+    if (!isTrain) {
+        originalDropoutRate = dropout->dropoutRate;
+        dropout->dropoutRate = 0;
+    }
+
+    const SeqLabelingInput& seqLabelingInput = static_cast<const SeqLabelingInput&>(input);
     // configuration
     int wordDim = std::stoi(configuration["wordDim"]);
     int charDim = std::stoi(configuration["charDim"]);
     int wordLSTMHiddenDim = std::stoi(configuration["wordLSTMHiddenDim"]);
     int charLSTMHiddenDim = std::stoi(configuration["charLSTMHiddenDim"]);
     float dropoutRate = std::stoi(configuration["dropoutRate"]);
-    int sequenceLen = input.seqLen;
+    int sequenceLen = seqLabelingInput.seqLen;
 
     // bi-directional char lstm forward
     Eigen::MatrixXd sequcenCharEmb(2 * charLSTMHiddenDim, sequenceLen);
 
-    charFwdLSTM->Layer::forward(input.charEmb);
+    charFwdLSTM->Layer::forward(seqLabelingInput.charEmb);
 
     std::vector<Eigen::MatrixXd> reversedCharEmb;
     for (int i = 0; i < sequenceLen; ++i) {
-        reversedCharEmb.push_back(input.charEmb[i].rowwise().reverse());
+        reversedCharEmb.push_back(seqLabelingInput.charEmb[i].rowwise().reverse());
     }
     charBwdLSTM->Layer::forward(reversedCharEmb);
 
@@ -94,7 +101,7 @@ void CharBiLSTMNet::forward(const Sequence & input) {
 
     // dropout forward
     Eigen::MatrixXd dropoutInput(wordDim + 2 * charLSTMHiddenDim, sequenceLen);
-    dropoutInput << input.wordEmb, sequcenCharEmb;  // concatenate word embedding and two character embeddings.
+    dropoutInput << seqLabelingInput.wordEmb, sequcenCharEmb;  // concatenate word embedding and two character embeddings.
     dropout->forward(dropoutInput);
 
     // bi-directional word lstm forward
@@ -104,22 +111,22 @@ void CharBiLSTMNet::forward(const Sequence & input) {
     mlp->forward(wordBiLSTM->output);
 
     // cross entropy forward
-    crossEntropyLoss->forward(mlp->output, input.labelOneHot);
+    crossEntropyLoss->forward(mlp->output, seqLabelingInput.labelOneHot);
 
     cache[name+"_output"] = crossEntropyLoss->output;
     output = crossEntropyLoss->output;
 }
 
-void CharBiLSTMNet::forward(const Sequence & input, bool isTrain) {
-    if (!isTrain) {
-        double originalDropoutRate = dropout->dropoutRate;
-        dropout->dropoutRate = 0;
-        forward(input);
-        dropout->dropoutRate = originalDropoutRate;
-    } else {
-        forward(input);
-    }
-}
+//void CharBiLSTMNet::forward(const SeqLabelingInput & input, bool isTrain) {
+//    if (!isTrain) {
+//        double originalDropoutRate = dropout->dropoutRate;
+//        dropout->dropoutRate = 0;
+//        forward(input);
+//        dropout->dropoutRate = originalDropoutRate;
+//    } else {
+//        forward(input);
+//    }
+//}
 
 void CharBiLSTMNet::backward() {
     // cross entropy backward
@@ -175,4 +182,11 @@ void CharBiLSTMNet::backward() {
 void CharBiLSTMNet::update(){
     float learningRate = std::stof(configuration["learningRate"]);
     Layer::update(learningRate);
+}
+
+void CharBiLSTMNet::gradientCheck(SeqLabelingInput& input){
+    std::map<std::string, Eigen::MatrixXd*> additionalParam;
+    additionalParam[name+"_wordInput"] = &input.wordEmb;
+
+    Net::gradientCheck(input, additionalParam);
 }

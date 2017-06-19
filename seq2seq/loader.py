@@ -7,8 +7,8 @@ def load_news15(xml_file):
     src_tokens = []
     trg_tokens = []
     for name in xml.findall('.//Name'):
-        src = name.find('SourceName')
-        trg = name.find('TargetName')
+        src = name.find('SourceName').text.replace(' ', '#')
+        trg = name.find('TargetName').text.replace(' ', '#')
         src_tokens.append(list(src))
         trg_tokens.append(list(trg))
 
@@ -19,7 +19,9 @@ def generate_mapping(tokens, is_trg):
     token2id = dict()
     id2token = dict()
     if is_trg:
-        tokens = ["</s>", "<s>"] + sorted(list(tokens))
+        tokens.remove("<s>")
+        tokens.remove("</s>")
+        tokens = ["<s>", "</s>"] + sorted(list(tokens))
     else:
         tokens = ["<UNK>"] + sorted(list(tokens))
     for i, c in enumerate(tokens):

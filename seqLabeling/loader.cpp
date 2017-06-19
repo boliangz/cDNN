@@ -187,7 +187,7 @@ void createData(const RAWDATA & rawData,
                 const std::map<std::string, int> & word2id,
                 const std::map<std::string, int> & char2id,
                 const std::map<std::string, int> & label2id,
-                std::vector<Sequence> & data) {
+                std::vector<SeqLabelingInput> & data) {
     for ( int i = 0; i < rawData.size(); ++i ) {
         std::vector<std::string> words = rawData[i].find("word")->second;
         std::vector<std::string> labels = rawData[i].find("label")->second;
@@ -216,7 +216,7 @@ void createData(const RAWDATA & rawData,
         for ( it = labels.begin(); it != labels.end(); ++it)
             labelIndex.push_back(label2id.find(* it)->second);
 
-        Sequence s;
+        SeqLabelingInput s;
         s.wordIndex = wordIndex;
         s.charIndex = charIndex;
         s.seqLen = wordIndex.size();
@@ -232,7 +232,7 @@ void createData(const RAWDATA & rawData,
     }
 }
 
-void processData(Sequence & s,
+void processData(SeqLabelingInput & s,
                  const Eigen::MatrixXd& wordEmbedding,
                  const Eigen::MatrixXd& charEmbedding) {
     long wordEmbDim = wordEmbedding.rows();

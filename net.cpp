@@ -2,7 +2,6 @@
 // Created by Boliang Zhang on 5/30/17.
 //
 #include "net.h"
-#include "utils.h"
 #include <fstream>
 
 void Net::gradientCheck(Input & input,
@@ -26,9 +25,6 @@ void Net::gradientCheck(Input & input,
 
         std::printf("checking %s %s\n", name.c_str(), paramName.c_str());
 
-        assert(param->rows() == diff[paramName].rows()
-               || param->cols() == diff[paramName].cols());
-
         for (int j = 0; j < num_checks; ++j) {
             int randRow = rand() % (int)(param->rows());
             int randCol = rand() % (int)(param->cols());
@@ -36,12 +32,12 @@ void Net::gradientCheck(Input & input,
             double originalVal = (*param)(randRow, randCol);
 
             (*param)(randRow, randCol) = originalVal - delta;
-            forward(input, false);
-            auto output0 = cache[name+"_output"];
+            forward(input, true);
+            auto output0 = output;
 
             (*param)(randRow, randCol) = originalVal + delta;
-            forward(input, false);
-            auto output1 = cache[name+"_output"];
+            forward(input, true);
+            auto output1 = output;
 
             (*param)(randRow, randCol) = originalVal;
 
@@ -63,14 +59,14 @@ void Net::gradientCheck(Input & input,
 void Net::updateEmbedding(Eigen::MatrixXd* embDict,
                           Eigen::MatrixXd& diffEmb,
                           const std::vector<int> & wordIndex){
-    mtx.lock();
+//    mtx.lock();
     float learningRate = std::stof(configuration["learningRate"]);
     gradientClip(diffEmb);
     for (int i = 0; i < wordIndex.size(); ++i) {
         Eigen::MatrixXd dWord = diffEmb.col(i);
         embDict->col(wordIndex[i]) -= learningRate * dWord;
     }
-    mtx.unlock();
+//    mtx.unlock();
 }
 
 void Net::loadNet(std::string modelDir,

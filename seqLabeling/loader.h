@@ -5,6 +5,7 @@
 #ifndef CDNN_LOADER_H
 #define CDNN_LOADER_H
 
+#include "charBiLSTMNet.h"
 #include <string>
 #include <Eigen/Core>
 #include <fstream>
@@ -14,17 +15,6 @@
 
 
 typedef std::vector<std::map<std::string, std::vector<std::string> > > RAWDATA;
-
-struct Sequence {
-    std::vector<int> wordIndex;
-    Eigen::MatrixXd wordEmb;
-    std::vector<std::vector<int> > charIndex;
-    std::vector<Eigen::MatrixXd> charEmb;
-    std::vector<int> labelIndex;
-    Eigen::MatrixXd labelOneHot;
-    int seqLen;
-};
-
 
 void loadPreEmbedding(std::string & filePath, std::map<std::string, Eigen::MatrixXd> & preEmbedding);
 
@@ -48,9 +38,9 @@ void createData(const RAWDATA & rawData,
                 const std::map<std::string, int> & word2id,
                 const std::map<std::string, int> & char2id,
                 const std::map<std::string, int> & label2id,
-                std::vector<Sequence> & data);
+                std::vector<SeqLabelingInput> & data);
 
-void processData(Sequence & s,
+void processData(SeqLabelingInput & s,
                  const Eigen::MatrixXd& wordEmbedding,
                  const Eigen::MatrixXd& charEmbedding);
 

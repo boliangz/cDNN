@@ -42,10 +42,10 @@ void Layer::backward(const std::vector<Eigen::MatrixXd> & dy) {
     }
     for (int i = 0; i < batchDiff.size(); ++i){
         for (auto & d: batchDiff[i]) {
-            if (d.first == name+"_input") continue;
             if (i == 0){
                 diff[d.first] = d.second;
             } else {
+                if (diff[d.first].cols() != d.second.cols()) continue;
                 diff[d.first] = diff[d.first].array() + d.second.array();
             }
         }
@@ -53,7 +53,7 @@ void Layer::backward(const std::vector<Eigen::MatrixXd> & dy) {
 }
 
 void Layer::update(float learningRate) {
-    mtx.lock();
+//    mtx.lock();
 
     std::map<std::string, Eigen::MatrixXd*>::iterator it;
     for (it = parameters.begin(); it != parameters.end(); ++it) {
@@ -63,7 +63,7 @@ void Layer::update(float learningRate) {
         *param -= learningRate * diff[param_name];
     }
 
-    mtx.unlock();
+//    mtx.unlock();
 }
 
 void Layer::gradientCheck() {
@@ -232,6 +232,10 @@ LSTM::LSTM(int inputSize, int hiddenDim, std::string name, bool isBatch,
     copyParameters(parameters);
 }
 
+void LSTM::forward(const Eigen::MatrixXd & input){
+    forward(input, NULL, NULL);
+}
+
 void LSTM::forward(const Eigen::MatrixXd & input,
                    Eigen::MatrixXd* _h_prev,
                    Eigen::MatrixXd* _c_prev){
@@ -297,6 +301,10 @@ void LSTM::forward(const Eigen::MatrixXd & input,
         c_prev = c;
     }
     this->output = cache[name+"_output"];
+}
+
+void LSTM::backward(const Eigen::MatrixXd & dy){
+    backward(dy, NULL, NULL);
 }
 
 void LSTM::backward(const Eigen::MatrixXd & dy,

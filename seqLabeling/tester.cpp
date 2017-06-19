@@ -31,7 +31,7 @@ int main(int argc, char* argv []) {
 
     CharBiLSTMNet charBiLSTMNet(configuration, parameters);
 
-    std::vector<Sequence> evalData;
+    std::vector<SeqLabelingInput> evalData;
     createData(evalRawData, word2id, char2id, label2id, evalData);
 
 
@@ -43,7 +43,7 @@ int main(int argc, char* argv []) {
 
     int numSeqToReport = 500;
     for (int i = 0; i < evalData.size(); ++i ) {
-        Sequence input = evalData[i];
+        SeqLabelingInput input = evalData[i];
         processData(input, wordEmbedding, charEmbedding);
 
         charBiLSTMNet.forward(input, false);

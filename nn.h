@@ -72,10 +72,12 @@ public:
     void forward(const Eigen::MatrixXd & input,
                  Eigen::MatrixXd* hprev,
                  Eigen::MatrixXd* cprev);
+    void forward(const Eigen::MatrixXd & input);
 
     void backward(const Eigen::MatrixXd & dy,
                   Eigen::MatrixXd* dhnext,
                   Eigen::MatrixXd* dcnext);
+    void backward(const Eigen::MatrixXd & dy);
 
 };
 

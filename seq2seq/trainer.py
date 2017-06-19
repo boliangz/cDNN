@@ -16,6 +16,8 @@ import codecs
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('trainer_json')
+    parser.add_argument('-c', action="store_true", default=False,
+                        help="compile trainer")
 
     args = parser.parse_args()
 
@@ -34,8 +36,8 @@ if __name__ == "__main__":
         raise IOError("model dir not found")
 
     # create a unique model id by datetime
-    date = datetime.date(datetime.now())
-    time = datetime.time(datetime.now())
+    date = datetime.datetime.date(datetime.datetime.now())
+    time = datetime.datetime.time(datetime.datetime.now())
     model_id = '_'.join([str(item) for item in
                          [date.year, date.month, date.day,
                           time.hour, time.minute, time.second,
@@ -75,7 +77,8 @@ if __name__ == "__main__":
     src_tokens = set(itertools.chain(*(train_src_tokens + eval_src_tokens)))
     trg_tokens = set(itertools.chain(*(train_trg_tokens + eval_trg_tokens)))
 
-    src_token2id, src_id2token = loader.generate_mapping(src_tokens)
+    src_token2id, src_id2token = loader.generate_mapping(src_tokens,
+                                                         is_trg=False)
     trg_token2id, trg_id2token = loader.generate_mapping(trg_tokens,
                                                          is_trg=True)
 
@@ -92,7 +95,7 @@ if __name__ == "__main__":
             'w',
             'utf-8') as f:
         for k, v in src_id2token.items():
-            f.write('%s %d\n' % (k, v))
+            f.write('%d %s\n' % (k, v))
 
     with codecs.open(
             os.path.join(conf['model_dir'], 'model', 'trg_token2id.mdl'),
@@ -106,32 +109,50 @@ if __name__ == "__main__":
             'w',
             'utf-8') as f:
         for k, v in trg_id2token.items():
-            f.write('%s %d\n' % (k, v))
+            f.write('%d %s\n' % (k, v))
 
     # save processed train and test set
-    with open(os.path.join(conf['model_dir'], 'train.dat'), 'w') as f:
+    train_dat = os.path.join(conf['model_dir'], 'train.dat')
+    with open(train_dat, 'w') as f:
         for src, trg in zip(train_src_tokens, train_trg_tokens):
             f.write('%s\t%s\n' % (' '.join(src), ' '.join(trg)))
-    with open(os.path.join(conf['model_dir'], 'eval.dat'), 'w') as f:
+    test_dat = os.path.join(conf['model_dir'], 'eval.dat')
+    with open(test_dat, 'w') as f:
         for src, trg in zip(eval_src_tokens, eval_trg_tokens):
             f.write('%s\t%s\n' % (' '.join(src), ' '.join(trg)))
 
+    # compile trainer
+    root_dir = os.path.dirname(os.path.abspath("__file__"))
+    trainer_exe = os.path.join(root_dir, "../bin/seq2SeqTrainer")
+    eigen_path = os.path.join(root_dir, '../third_party/eigen/')
+    cmd = ['g++', '-std=c++11', '-O3', '-pthread', '-I', eigen_path,
+           os.path.join(root_dir, '../nn.cpp'),
+           os.path.join(root_dir, '../utils.cpp'),
+           os.path.join(root_dir, '../net.cpp'),
+           os.path.join(root_dir, 'trainer.cpp'),
+           os.path.join(root_dir, 'loader.cpp'),
+           os.path.join(root_dir, 'seq2seq.cpp'),
+           '-o', trainer_exe]
+    print('=> compiling trainer...')
+    print(' '.join(cmd))
+    subprocess.call(' '.join(cmd), shell=True)
+
     # executing trainer
-    trainer_exe = os.path.join(os.path.dirname(os.path.abspath("__file__")),
-                               "../bin/seqLabelingTrainer")
     cmd = [
         trainer_exe,
-        conf['train_file'],
-        conf['eval_file'],
+        train_dat,
+        test_dat,
         conf['model_dir'],
         conf['token_dim'],
         conf['token_lstm_dim'],
         conf['learning_rate'],
         conf['encoder_stack'],
+        conf['decoder_stack'],
         conf['dropout'],
         conf['num_thread'],
+        conf['num_epoch']
     ]
-    print('=>executing trainer...')
+    print('=> executing trainer...')
     print(' '.join(cmd))
 
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

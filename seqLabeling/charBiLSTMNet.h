@@ -7,6 +7,16 @@
 
 #include "../net.h"
 
+struct SeqLabelingInput: public Input {
+    std::vector<int> wordIndex;
+    Eigen::MatrixXd wordEmb;
+    std::vector<std::vector<int> > charIndex;
+    std::vector<Eigen::MatrixXd> charEmb;
+    std::vector<int> labelIndex;
+    Eigen::MatrixXd labelOneHot;
+    int seqLen;
+};
+
 class CharBiLSTMNet: public Net {
 public:
     CharBiLSTMNet(){}
@@ -14,12 +24,14 @@ public:
     CharBiLSTMNet(const std::map<std::string, std::string> & configuration,
                   const std::map<std::string, Eigen::MatrixXd*>& parameters);
 
-    void forward(const Sequence & input);
-    void forward(const Sequence & input, bool isTrain);
+//    void forward(const SeqLabelingInput & input);
+    void forward(const Input & input, bool isTrain);
 
     void backward();
 
     void update();
+
+    void gradientCheck(SeqLabelingInput& input);
 
     LSTM* charFwdLSTM;
     LSTM* charBwdLSTM;
